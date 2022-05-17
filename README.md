@@ -29,8 +29,8 @@ Activate the environment and install pip, which is necessary to install other Py
 Now install the remaining python packages: \
 `pip install tensorflow==2.3 opencv-python numpy setuptools pandas matplotlib pillow scipy`
 Finally, you have to obtain the freefield package as well as another one from github:
-`pip install git+https://github.com/OleBialas/slab.git`
-`pip install git+https://github.com/OleBialas/freefield.git`
+`pip install git+https://github.com/pfriedrich-hub/slab.git`
+`pip install git+https://github.com/pfriedrich-hub/freefield.git`
 
 ## Hardware drivers ##
 
