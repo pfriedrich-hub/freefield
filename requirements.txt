@@ -4,8 +4,8 @@ pandas
 matplotlib
 pillow
 scipy
-insegel
-ipython
 slab
 headpose
 opencv-python
+torch
+torchvision

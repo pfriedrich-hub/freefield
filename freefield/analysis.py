@@ -4,11 +4,28 @@ from scipy import stats
 
 def double_to_single_pole(azimuth_double, elevation_double):
     azimuth_double, elevation_double = np.deg2rad(azimuth_double), np.deg2rad(elevation_double)
-    azimuth_single = np.arctan((np.cos(azimuth_double)*np.cos(elevation_double))/np.sin(azimuth_double))
-    elevation_single = np.arctan(np.sin(elevation_double)*np.cos(azimuth_double))
-    azimuth_single, elevation_single = np.rad2deg(azimuth_single), np.rad2deg(elevation_single)
-    print(f"double pole coordinates: azimuth={np.rad2deg(azimuth_double)}, elevation: {np.rad2deg(elevation_double)}\n"
-          f"single pole coordinates: azimuth={azimuth_single}, elevation: {elevation_single}")
+    azimuth_single = np.arctan(np.sin(azimuth_double) / np.cos(azimuth_double) / np.cos(elevation_double))
+    return np.rad2deg(azimuth_single)
+
+
+def single_pole_to_polar(azimuth, elevation):
+    phi = -1 * azimuth
+    theta = elevation - 90
+    return phi, theta
+
+
+def polar_to_single_pole(phi, theta):
+    azimuth = phi * -1
+    elevation = theta + 90
+    return azimuth, elevation
+
+
+def polar_to_cartesian(phi, theta):
+    phi, theta = np.deg2rad(phi), np.deg2rad(theta)
+    x = np.sin(theta)*np.cos(phi)
+    y = np.sin(theta)*np.sin(phi)
+    z = np.cos(theta)
+    return x, y, z
 
 
 def mean_dir(data, speaker):
@@ -16,8 +33,8 @@ def mean_dir(data, speaker):
     # sines, cosines = _sines_cosines(data, speaker)
     # return numpy.rad2deg(sines.sum(axis=1) / cosines.sum(axis=1)).flatten()
     # use regular addition with corrected angles:
-    idx = np.where(data[:,1] == speaker)
-    return data[idx,2:4].mean(axis=1)
+    idx = np.where(data[:, 1] == speaker)
+    return data[idx, 2:4].mean(axis=1)
 
 
 def mad(data, speaker, ref_dir=None):

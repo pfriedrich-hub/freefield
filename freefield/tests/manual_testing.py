@@ -1,7 +1,7 @@
 # Tests to run on the real setup
 # start with the basic elements, then run complete procedures like
 # calibration or localization test
-from freefield import freefield, camera
+from freefield import freefield, cameras
 import PySpin
 import numpy as np
 import time
@@ -60,7 +60,7 @@ for image in images:
 
 
 
-#### 2. test if reading from and writing to the devices works ####
+#### 2. test if reading from and writing to the device works ####
 freefield.initialize_setup(setup="dome", default_mode="play_rec", camera_type="flir")
 freefield.write(tag="playbuflen", value=100, procs="RX8s")
 signal = np.random.randn(100)

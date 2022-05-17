@@ -2,6 +2,7 @@ import numpy
 from freefield import DIR, Cameras
 import cv2
 import os
+from headpose import PoseEstimator
 
 
 class VirtualCam(Cameras):
@@ -10,6 +11,7 @@ class VirtualCam(Cameras):
         self.n_cams = n_cams
         test_image = self.acquire_images(n_images=1)
         self.imsize = test_image.shape[0:2]
+        self.model = PoseEstimator()
 
     def acquire_images(self, n_images):
 
@@ -73,5 +75,12 @@ def test_calibration():
         offset = numpy.random.uniform(-10, 10)
         world_coordinates = [c[:, 0]*factor+offset for c in camera_coordinates]
         cams.calibrate(world_coordinates, camera_coordinates, plot=False)
-        a, b = cams.calibration["cam0"].values()
-        numpy.testing.assert_almost_equal([a, b], [offset, factor])
+        for angle in ["azimuth", "elevation"]:
+            a, b = cams.calibration["cam0"][angle].values()
+            numpy.testing.assert_almost_equal([a, b], [offset, factor])
+        for cam in range(n_cams):
+            assert "azimuth" in cams.calibration[f"cam{cam}"]
+            assert "elevation" in cams.calibration[f"cam{cam}"]
+            for angle in ["azimuth", "elevation"]:
+                assert "a" in cams.calibration[f"cam{cam}"][angle]
+                assert "b" in cams.calibration[f"cam{cam}"][angle]
