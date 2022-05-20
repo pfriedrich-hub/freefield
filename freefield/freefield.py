@@ -213,8 +213,10 @@ def wait_to_finish_playing(proc="all", tag="playback"):
     elif isinstance(proc, str):
         proc = [proc]
     logging.info(f'Waiting for {tag} on {proc}.')
+    set_logger('warning', report=False)
     while any(PROCESSORS.read(tag, n_samples=1, proc=p) for p in proc):
         time.sleep(0.01)
+    set_logger('info', report=False)
     logging.info('Done waiting.')
 
 
@@ -590,7 +592,7 @@ def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, th
     """
     if not PROCESSORS.mode == "play_rec":
         PROCESSORS.initialize_default(mode="play_rec")
-    sound = slab.Sound.chirp(duration=0.05, from_frequency=low_cutoff, to_frequency=high_cutoff)
+    sound = slab.Sound.chirp(duration=0.1, from_frequency=low_cutoff, to_frequency=high_cutoff)
     if speakers == "all":  # use the whole speaker table
         speakers = SPEAKERS
     else:
@@ -761,7 +763,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
             rec.level = sound.level
     return rec
 
-def set_logger(level):
+def set_logger(level, report=True):
     """
     Set the logger to a specific level.
     Parameters:
@@ -771,6 +773,7 @@ def set_logger(level):
     try:
         logger = logging.getLogger()
         eval('logger.setLevel(logging.%s)' %level.upper())
-        # print('Logger set to %s.' %level.upper())
+        if report:
+            print('Logger set to %s.' %level.upper())
     except AttributeError:
         raise AttributeError("Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'")
