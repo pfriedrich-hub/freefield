@@ -328,7 +328,7 @@ def apply_equalization(signal, speaker, level=True, frequency=True):
     if level:
         if speaker.level is None:
             raise ValueError("speaker not level-equalized! Load an existing equalization of calibrate the setup!")
-        equalized_signal.level *= speaker.level
+        equalized_signal.level += speaker.level
     if frequency:
         if speaker.filter is None:
             raise ValueError("speaker not frequency-equalized! Load an existing equalization of calibrate the setup!")
