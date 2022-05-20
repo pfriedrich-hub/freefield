@@ -582,13 +582,27 @@ def localization_test_headphones(speakers, signals, n_reps=1, n_images=5, visual
     return seq
 
 
-def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=80,
+def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=.3,
                       low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
     """
     Equalize the loudspeaker array in two steps. First: equalize over all
     level differences by a constant for each speaker. Second: remove spectral
     difference by inverse filtering. For more details on how the
     inverse filters are computed see the documentation of slab.Filter.equalizing_filterbank
+
+    Args:
+        speakers (list, string): Select speakers for equalization. Can be a list of speaker indices or 'all'
+        reference_speaker: Select speaker for reference level and frequency response
+        bandwidth (float): Width of the filters, used to divide the signal into subbands, in octaves. A small
+            bandwidth results in a fine tuned transfer function which is useful for equalizing small notches.
+        threshold (float): Threshold for level equalization. Correct level only for speakers that deviate more
+            than <threshold> dB from reference speaker
+        low_cutoff (int | float): The lower limit of frequency equalization range in Hz.
+        high_cutoff (int | float): The upper limit of frequency equalization range in Hz.
+        alpha (float): Filter regularization parameter. Values below 1.0 reduce the filter's effect, values above
+            amplify it. WARNING: large filter gains may result in temporal distortions of the sound
+        file_name (string): Name of the file to store equalization parameters.
+
     """
     if not PROCESSORS.mode == "play_rec":
         PROCESSORS.initialize_default(mode="play_rec")
@@ -624,6 +638,9 @@ def _level_equalization(speakers, sound, reference_speaker, threshold):
     for speaker in speakers:
         recordings.append(play_and_record(speaker, sound, equalize=False))
     recordings = slab.Sound(recordings)
+    recordings.data[:, np.logical_and(recordings.level > target_recording.level-threshold,
+                    recordings.level < target_recording.level+threshold)] = target_recording.data
+    equalization_levels = target_recording.level - recordings.level
     recordings.data[:, recordings.level < threshold] = target_recording.data  # thresholding
     return target_recording.level / recordings.level
 
@@ -638,10 +655,9 @@ def _frequency_equalization(speakers, sound, reference_speaker, calibration_leve
     recordings = []
     for speaker, level in zip(speakers, calibration_levels):
         attenuated = deepcopy(sound)
-        attenuated.level *= level
+        attenuated.level += level
         recordings.append(play_and_record(speaker, attenuated, equalize=False))
     recordings = slab.Sound(recordings)
-    recordings.data[:, recordings.level < threshold] = reference.data
     filter_bank = slab.Filter.equalizing_filterbank(reference, recordings, low_cutoff=low_cutoff,
                                                     high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
     # check for notches in the filter:
