@@ -12,7 +12,7 @@ from matplotlib.axes import Axes
 from freefield import DIR, Processors, cameras
 
 logging.basicConfig(level=logging.INFO)
-slab.Signal.set_default_samplerate(97656)  # default samplerate for generating sounds, filters etc.
+slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 # Initialize global variables:
 CAMERAS = cameras.Cameras()
 PROCESSORS = Processors()
@@ -312,7 +312,8 @@ def set_signal_and_speaker(signal, speaker, equalize=True):
     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
 
-def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True):
+def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
+                    recording_samplerate=97656):
     """
     Play the signal from a speaker and return the recording. Delay compensation
     means making the buffer of the recording processor n samples longer and then
@@ -326,6 +327,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
         compensate_delay: bool, compensate the delay between play and record
         compensate_attenuation:
         equalize:
+        recording_samplerate: samplerate of the recording
     Returns:
         rec: 1-D array, recorded signal
     """
@@ -335,20 +337,21 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
-    write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
-    write(tag="playbuflen", value=sound.n_samples + n_delay, processors="RP2")
+    rec_n_samples = int(sound.duration * recording_samplerate)
+    write(tag="playbuflen", value=rec_n_samples + n_delay, processors="RP2")
     set_signal_and_speaker(sound, speaker, equalize)
     play()
     wait_to_finish_playing()
     if PROCESSORS.mode == "play_rec":  # read the data from buffer and skip the first n_delay samples
-        rec = read(tag='data', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
-        rec = slab.Sound(rec)
+        rec = read(tag='data', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
+        rec = slab.Sound(rec, samplerate=recording_samplerate)
     elif PROCESSORS.mode == "play_birec":  # read data for left and right ear from buffer
-        rec_l = read(tag='datal', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
-        rec_r = read(tag='datar', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
-        rec = slab.Binaural([rec_l, rec_r])
+        rec_l = read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
+        rec_r = read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
+        rec = slab.Binaural([rec_l, rec_r], samplerate=recording_samplerate)
     else:
         raise ValueError("Setup must be initialized in mode 'play_rec' or 'play_birec'!")
+    rec = rec.resample(sound.samplerate)
     if compensate_attenuation:
         if isinstance(rec, slab.Binaural):
             iid = rec.left.level - rec.right.level
@@ -359,7 +362,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     return rec
 
 
-def get_recording_delay(distance=1.4, sample_rate=97656, play_from=None, rec_from=None):
+def get_recording_delay(distance=1.4, sample_rate=48828, play_from=None, rec_from=None):
     """
         Calculate the delay it takes for played sound to be recorded. Depends
         on the distance of the microphone from the speaker and on the device
