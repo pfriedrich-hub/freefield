@@ -12,7 +12,7 @@ from matplotlib.axes import Axes
 from freefield import DIR, Processors, cameras
 
 logging.basicConfig(level=logging.INFO)
-slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
+slab.Signal.set_default_samplerate(97656)  # default samplerate for generating sounds, filters etc.
 # Initialize global variables:
 CAMERAS = cameras.Cameras()
 PROCESSORS = Processors()
@@ -312,33 +312,54 @@ def set_signal_and_speaker(signal, speaker, equalize=True):
     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
 
-def apply_equalization(signal, speaker, level=True, frequency=True):
+def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True):
     """
-    Apply level correction and frequency equalization to a signal
-
-    Args:
-        signal: signal to calibrate
-        speaker: index number, coordinates or row from the speaker table. Determines which calibration is used
-        level:
-        frequency:
+    Play the signal from a speaker and return the recording. Delay compensation
+    means making the buffer of the recording processor n samples longer and then
+    throwing the first n samples away when returning the recording so sig and
+    rec still have the same length. For this to work, the circuits rec_buf.rcx
+    and play_buf.rcx have to be initialized on RP2 and RX8s and the mic must
+    be plugged in.
+    Parameters:
+        speaker: integer between 1 and 48, index number of the speaker
+        sound: instance of slab.Sound, signal that is played from the speaker
+        compensate_delay: bool, compensate the delay between play and record
+        compensate_attenuation:
+        equalize:
     Returns:
-        slab.Sound: calibrated copy of signal
+        rec: 1-D array, recorded signal
     """
-    signal = slab.Sound(signal)
-    speaker = pick_speakers(speaker)[0]
-    equalized_signal = deepcopy(signal)
-    if level:
-        if speaker.level is None:
-            raise ValueError("speaker not level-equalized! Load an existing equalization of calibrate the setup!")
-        equalized_signal.level += speaker.level
-    if frequency:
-        if speaker.filter is None:
-            raise ValueError("speaker not frequency-equalized! Load an existing equalization of calibrate the setup!")
-        equalized_signal = speaker.filter.apply(equalized_signal)
-    return equalized_signal
+    write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
+    if compensate_delay:
+        n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
+        n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
+    else:
+        n_delay = 0
+    write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
+    write(tag="playbuflen", value=sound.n_samples + n_delay, processors="RP2")
+    set_signal_and_speaker(sound, speaker, equalize)
+    play()
+    wait_to_finish_playing()
+    if PROCESSORS.mode == "play_rec":  # read the data from buffer and skip the first n_delay samples
+        rec = read(tag='data', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
+        rec = slab.Sound(rec)
+    elif PROCESSORS.mode == "play_birec":  # read data for left and right ear from buffer
+        rec_l = read(tag='datal', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
+        rec_r = read(tag='datar', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
+        rec = slab.Binaural([rec_l, rec_r])
+    else:
+        raise ValueError("Setup must be initialized in mode 'play_rec' or 'play_birec'!")
+    if compensate_attenuation:
+        if isinstance(rec, slab.Binaural):
+            iid = rec.left.level - rec.right.level
+            rec.level = sound.level
+            rec.left.level += iid
+        else:
+            rec.level = sound.level
+    return rec
 
 
-def get_recording_delay(distance=1.6, sample_rate=48828, play_from=None, rec_from=None):
+def get_recording_delay(distance=1.4, sample_rate=97656, play_from=None, rec_from=None):
     """
         Calculate the delay it takes for played sound to be recorded. Depends
         on the distance of the microphone from the speaker and on the device
@@ -373,6 +394,183 @@ def get_recording_delay(distance=1.6, sample_rate=48828, play_from=None, rec_fro
     else:
         n_ad = 0
     return n_sound_traveling + n_da + n_ad
+
+
+def apply_equalization(signal, speaker, level=True, frequency=True):
+    """
+    Apply level correction and frequency equalization to a signal
+
+    Args:
+        signal: signal to calibrate
+        speaker: index number, coordinates or row from the speaker table. Determines which calibration is used
+        level:
+        frequency:
+    Returns:
+        slab.Sound: calibrated copy of signal
+    """
+    signal = slab.Sound(signal)
+    speaker = pick_speakers(speaker)[0]
+    equalized_signal = deepcopy(signal)
+    if level:
+        if speaker.level is None:
+            raise ValueError("speaker not level-equalized! Load an existing equalization of calibrate the setup!")
+        equalized_signal.level += speaker.level
+    if frequency:
+        if speaker.filter is None:
+            raise ValueError("speaker not frequency-equalized! Load an existing equalization of calibrate the setup!")
+        equalized_signal = speaker.filter.apply(equalized_signal)
+    return equalized_signal
+
+
+def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=.3,
+                      low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
+    """
+    Equalize the loudspeaker array in two steps. First: equalize over all
+    level differences by a constant for each speaker. Second: remove spectral
+    difference by inverse filtering. For more details on how the
+    inverse filters are computed see the documentation of slab.Filter.equalizing_filterbank
+
+    Args:
+        speakers (list, string): Select speakers for equalization. Can be a list of speaker indices or 'all'
+        reference_speaker: Select speaker for reference level and frequency response
+        bandwidth (float): Width of the filters, used to divide the signal into subbands, in octaves. A small
+            bandwidth results in a fine tuned transfer function which is useful for equalizing small notches.
+        threshold (float): Threshold for level equalization. Correct level only for speakers that deviate more
+            than <threshold> dB from reference speaker
+        low_cutoff (int | float): The lower limit of frequency equalization range in Hz.
+        high_cutoff (int | float): The upper limit of frequency equalization range in Hz.
+        alpha (float): Filter regularization parameter. Values below 1.0 reduce the filter's effect, values above
+            amplify it. WARNING: large filter gains may result in temporal distortions of the sound
+        file_name (string): Name of the file to store equalization parameters.
+
+    """
+    if not PROCESSORS.mode == "play_rec":
+        PROCESSORS.initialize_default(mode="play_rec")
+    sound = slab.Sound.chirp(duration=0.1, from_frequency=low_cutoff, to_frequency=high_cutoff)
+    if speakers == "all":  # use the whole speaker table
+        speakers = SPEAKERS
+    else:
+        speakers = pick_speakers(picks=speakers)
+    reference_speaker = pick_speakers(reference_speaker)[0]
+    equalization_levels = _level_equalization(speakers, sound, reference_speaker, threshold)
+    filter_bank, rec = _frequency_equalization(speakers, sound, reference_speaker, equalization_levels,
+                                               bandwidth, low_cutoff, high_cutoff, alpha, threshold)
+    equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
+                    for i in range(len(speakers))}
+    if file_name is None:  # use the default filename and rename teh existing file
+        file_name = DIR / 'data' / f'calibration_{SETUP}.pkl'
+    else:
+        file_name = Path(file_name)
+    if file_name.exists():  # move the old calibration to the log folder
+        date = datetime.datetime.now().strftime("_%Y-%m-%d-%H-%M-%S")
+        file_name.rename(file_name.parent / (file_name.stem + date + file_name.suffix))
+    with open(file_name, 'wb') as f:  # save the newly recorded calibration
+        pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+
+
+def _level_equalization(speakers, sound, reference_speaker, threshold):
+    """
+    Record the signal from each speaker in the list and return the level of each
+    speaker relative to the target speaker(target speaker must be in the list)
+    """
+    target_recording = play_and_record(reference_speaker, sound, equalize=False)
+    recordings = []
+    for speaker in speakers:
+        recordings.append(play_and_record(speaker, sound, equalize=False))
+    recordings = slab.Sound(recordings)
+    recordings.data[:, np.logical_and(recordings.level > target_recording.level-threshold,
+                    recordings.level < target_recording.level+threshold)] = target_recording.data
+    equalization_levels = target_recording.level - recordings.level
+    recordings.data[:, recordings.level < threshold] = target_recording.data  # thresholding
+    return target_recording.level / recordings.level
+
+
+def _frequency_equalization(speakers, sound, reference_speaker, calibration_levels, bandwidth,
+                            low_cutoff, high_cutoff, alpha, threshold):
+    """
+    play the level-equalized signal, record and compute and a bank of inverse filter
+    to equalize each speaker relative to the target one. Return filterbank and recordings
+    """
+    reference = play_and_record(reference_speaker, sound, equalize=False)
+    recordings = []
+    for speaker, level in zip(speakers, calibration_levels):
+        attenuated = deepcopy(sound)
+        attenuated.level += level
+        recordings.append(play_and_record(speaker, attenuated, equalize=False))
+    recordings = slab.Sound(recordings)
+    filter_bank = slab.Filter.equalizing_filterbank(reference, recordings, low_cutoff=low_cutoff,
+                                                    high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
+    # check for notches in the filter:
+    transfer_function = filter_bank.tf(show=False)[1][0:900, :]
+    if (transfer_function < -30).sum() > 0:
+        print("Some of the equalization filters contain deep notches - try adjusting the parameters.")
+    return filter_bank, recordings
+
+
+def test_equalization(speakers="all"):
+    """
+    Test the effectiveness of the speaker equalization
+    """
+    if not PROCESSORS.mode == "play_rec":
+        PROCESSORS.initialize_default(mode="play_rec")
+    not_equalized = slab.Sound.whitenoise(duration=.5)
+    # the recordings from the un-equalized, the level equalized and the fully equalized sounds
+    rec_raw, rec_level, rec_full = [], [], []
+    if speakers == "all":  # use the whole speaker table
+        speakers = SPEAKERS
+    else:
+        speakers = pick_speakers(SPEAKERS)
+    for speaker in speakers:
+        level_equalized = apply_equalization(not_equalized, speaker=speaker, level=True, frequency=False)
+        full_equalized = apply_equalization(not_equalized, speaker=speaker, level=True, frequency=True)
+        rec_raw.append(play_and_record(speaker, not_equalized, equalize=False))
+        rec_level.append(play_and_record(speaker, level_equalized, equalize=False))
+        rec_full.append(play_and_record(speaker, full_equalized, equalize=False))
+    return slab.Sound(rec_raw), slab.Sound(rec_level), slab.Sound(rec_full)
+
+
+def spectral_range(signal, bandwidth=1 / 5, low_cutoff=50, high_cutoff=20000, thresh=3,
+                   plot=True, log=True):
+    """
+    Compute the range of differences in power spectrum for all channels in
+    the signal. The signal is devided into bands of equivalent rectangular
+    bandwidth (ERB - see More& Glasberg 1982) and the level is computed for
+    each frequency band and each channel in the recording. To show the range
+    of spectral difference across channels the minimum and maximum levels
+    across channels are computed. Can be used for example to check the
+    effect of loud speaker equalization.
+    """
+    # generate ERB-spaced filterbank:
+    filter_bank = slab.Filter.cos_filterbank(length=1000, bandwidth=bandwidth,
+                                             low_cutoff=low_cutoff, high_cutoff=high_cutoff,
+                                             samplerate=signal.samplerate)
+    center_freqs, _, _ = slab.Filter._center_freqs(low_cutoff, high_cutoff, bandwidth)
+    center_freqs = slab.Filter._erb2freq(center_freqs)
+    # create arrays to write data into:
+    levels = np.zeros((signal.n_channels, filter_bank.n_channels))
+    max_level, min_level = np.zeros(filter_bank.n_channels), np.zeros(filter_bank.n_channels)
+    for i in range(signal.n_channels):  # compute ERB levels for each channel
+        levels[i] = filter_bank.apply(signal.channel(i)).level
+    for i in range(filter_bank.n_channels):  # find max and min for each frequency
+        max_level[i] = max(levels[:, i])
+        min_level[i] = min(levels[:, i])
+    difference = max_level - min_level
+    if plot is True or isinstance(plot, Axes):
+        if isinstance(plot, Axes):
+            ax = plot
+        else:
+            fig, ax = plt.subplots(1)
+        # frequencies where the difference exceeds the threshold
+        bads = np.where(difference > thresh)[0]
+        for y in [max_level, min_level]:
+            if log is True:
+                ax.semilogx(center_freqs, y, color="black", linestyle="--")
+            else:
+                ax.plot(center_freqs, y, color="black", linestyle="--")
+        for bad in bads:
+            ax.fill_between(center_freqs[bad - 1:bad + 1], max_level[bad - 1:bad + 1],
+                            min_level[bad - 1:bad + 1], color="red", alpha=.6)
+    return difference
 
 
 def get_head_pose(n_images=1):
@@ -581,203 +779,6 @@ def localization_test_headphones(speakers, signals, n_reps=1, n_images=5, visual
     seq.conditions = np.array([(s.azimuth, s.elevation) for s in seq.conditions])
     return seq
 
-
-def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=.3,
-                      low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
-    """
-    Equalize the loudspeaker array in two steps. First: equalize over all
-    level differences by a constant for each speaker. Second: remove spectral
-    difference by inverse filtering. For more details on how the
-    inverse filters are computed see the documentation of slab.Filter.equalizing_filterbank
-
-    Args:
-        speakers (list, string): Select speakers for equalization. Can be a list of speaker indices or 'all'
-        reference_speaker: Select speaker for reference level and frequency response
-        bandwidth (float): Width of the filters, used to divide the signal into subbands, in octaves. A small
-            bandwidth results in a fine tuned transfer function which is useful for equalizing small notches.
-        threshold (float): Threshold for level equalization. Correct level only for speakers that deviate more
-            than <threshold> dB from reference speaker
-        low_cutoff (int | float): The lower limit of frequency equalization range in Hz.
-        high_cutoff (int | float): The upper limit of frequency equalization range in Hz.
-        alpha (float): Filter regularization parameter. Values below 1.0 reduce the filter's effect, values above
-            amplify it. WARNING: large filter gains may result in temporal distortions of the sound
-        file_name (string): Name of the file to store equalization parameters.
-
-    """
-    if not PROCESSORS.mode == "play_rec":
-        PROCESSORS.initialize_default(mode="play_rec")
-    sound = slab.Sound.chirp(duration=0.1, from_frequency=low_cutoff, to_frequency=high_cutoff)
-    if speakers == "all":  # use the whole speaker table
-        speakers = SPEAKERS
-    else:
-        speakers = pick_speakers(picks=speakers)
-    reference_speaker = pick_speakers(reference_speaker)[0]
-    equalization_levels = _level_equalization(speakers, sound, reference_speaker, threshold)
-    filter_bank, rec = _frequency_equalization(speakers, sound, reference_speaker, equalization_levels,
-                                               bandwidth, low_cutoff, high_cutoff, alpha, threshold)
-    equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
-                    for i in range(len(speakers))}
-    if file_name is None:  # use the default filename and rename teh existing file
-        file_name = DIR / 'data' / f'calibration_{SETUP}.pkl'
-    else:
-        file_name = Path(file_name)
-    if file_name.exists():  # move the old calibration to the log folder
-        date = datetime.datetime.now().strftime("_%Y-%m-%d-%H-%M-%S")
-        file_name.rename(file_name.parent / (file_name.stem + date + file_name.suffix))
-    with open(file_name, 'wb') as f:  # save the newly recorded calibration
-        pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
-
-
-def _level_equalization(speakers, sound, reference_speaker, threshold):
-    """
-    Record the signal from each speaker in the list and return the level of each
-    speaker relative to the target speaker(target speaker must be in the list)
-    """
-    target_recording = play_and_record(reference_speaker, sound, equalize=False)
-    recordings = []
-    for speaker in speakers:
-        recordings.append(play_and_record(speaker, sound, equalize=False))
-    recordings = slab.Sound(recordings)
-    recordings.data[:, np.logical_and(recordings.level > target_recording.level-threshold,
-                    recordings.level < target_recording.level+threshold)] = target_recording.data
-    equalization_levels = target_recording.level - recordings.level
-    recordings.data[:, recordings.level < threshold] = target_recording.data  # thresholding
-    return target_recording.level / recordings.level
-
-
-def _frequency_equalization(speakers, sound, reference_speaker, calibration_levels, bandwidth,
-                            low_cutoff, high_cutoff, alpha, threshold):
-    """
-    play the level-equalized signal, record and compute and a bank of inverse filter
-    to equalize each speaker relative to the target one. Return filterbank and recordings
-    """
-    reference = play_and_record(reference_speaker, sound, equalize=False)
-    recordings = []
-    for speaker, level in zip(speakers, calibration_levels):
-        attenuated = deepcopy(sound)
-        attenuated.level += level
-        recordings.append(play_and_record(speaker, attenuated, equalize=False))
-    recordings = slab.Sound(recordings)
-    filter_bank = slab.Filter.equalizing_filterbank(reference, recordings, low_cutoff=low_cutoff,
-                                                    high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
-    # check for notches in the filter:
-    transfer_function = filter_bank.tf(show=False)[1][0:900, :]
-    if (transfer_function < -30).sum() > 0:
-        print("Some of the equalization filters contain deep notches - try adjusting the parameters.")
-    return filter_bank, recordings
-
-
-def test_equalization(speakers="all"):
-    """
-    Test the effectiveness of the speaker equalization
-    """
-    if not PROCESSORS.mode == "play_rec":
-        PROCESSORS.initialize_default(mode="play_rec")
-    not_equalized = slab.Sound.whitenoise(duration=.5)
-    # the recordings from the un-equalized, the level equalized and the fully equalized sounds
-    rec_raw, rec_level, rec_full = [], [], []
-    if speakers == "all":  # use the whole speaker table
-        speakers = SPEAKERS
-    else:
-        speakers = pick_speakers(SPEAKERS)
-    for speaker in speakers:
-        level_equalized = apply_equalization(not_equalized, speaker=speaker, level=True, frequency=False)
-        full_equalized = apply_equalization(not_equalized, speaker=speaker, level=True, frequency=True)
-        rec_raw.append(play_and_record(speaker, not_equalized, equalize=False))
-        rec_level.append(play_and_record(speaker, level_equalized, equalize=False))
-        rec_full.append(play_and_record(speaker, full_equalized, equalize=False))
-    return slab.Sound(rec_raw), slab.Sound(rec_level), slab.Sound(rec_full)
-
-
-def spectral_range(signal, bandwidth=1 / 5, low_cutoff=50, high_cutoff=20000, thresh=3,
-                   plot=True, log=True):
-    """
-    Compute the range of differences in power spectrum for all channels in
-    the signal. The signal is devided into bands of equivalent rectangular
-    bandwidth (ERB - see More& Glasberg 1982) and the level is computed for
-    each frequency band and each channel in the recording. To show the range
-    of spectral difference across channels the minimum and maximum levels
-    across channels are computed. Can be used for example to check the
-    effect of loud speaker equalization.
-    """
-    # generate ERB-spaced filterbank:
-    filter_bank = slab.Filter.cos_filterbank(length=1000, bandwidth=bandwidth,
-                                             low_cutoff=low_cutoff, high_cutoff=high_cutoff,
-                                             samplerate=signal.samplerate)
-    center_freqs, _, _ = slab.Filter._center_freqs(low_cutoff, high_cutoff, bandwidth)
-    center_freqs = slab.Filter._erb2freq(center_freqs)
-    # create arrays to write data into:
-    levels = np.zeros((signal.n_channels, filter_bank.n_channels))
-    max_level, min_level = np.zeros(filter_bank.n_channels), np.zeros(filter_bank.n_channels)
-    for i in range(signal.n_channels):  # compute ERB levels for each channel
-        levels[i] = filter_bank.apply(signal.channel(i)).level
-    for i in range(filter_bank.n_channels):  # find max and min for each frequency
-        max_level[i] = max(levels[:, i])
-        min_level[i] = min(levels[:, i])
-    difference = max_level - min_level
-    if plot is True or isinstance(plot, Axes):
-        if isinstance(plot, Axes):
-            ax = plot
-        else:
-            fig, ax = plt.subplots(1)
-        # frequencies where the difference exceeds the threshold
-        bads = np.where(difference > thresh)[0]
-        for y in [max_level, min_level]:
-            if log is True:
-                ax.semilogx(center_freqs, y, color="black", linestyle="--")
-            else:
-                ax.plot(center_freqs, y, color="black", linestyle="--")
-        for bad in bads:
-            ax.fill_between(center_freqs[bad - 1:bad + 1], max_level[bad - 1:bad + 1],
-                            min_level[bad - 1:bad + 1], color="red", alpha=.6)
-    return difference
-
-
-def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True):
-    """
-    Play the signal from a speaker and return the recording. Delay compensation
-    means making the buffer of the recording processor n samples longer and then
-    throwing the first n samples away when returning the recording so sig and
-    rec still have the same length. For this to work, the circuits rec_buf.rcx
-    and play_buf.rcx have to be initialized on RP2 and RX8s and the mic must
-    be plugged in.
-    Parameters:
-        speaker: integer between 1 and 48, index number of the speaker
-        sound: instance of slab.Sound, signal that is played from the speaker
-        compensate_delay: bool, compensate the delay between play and record
-        compensate_attenuation:
-        equalize:
-    Returns:
-        rec: 1-D array, recorded signal
-    """
-    write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
-    if compensate_delay:
-        n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
-        n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
-    else:
-        n_delay = 0
-    write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
-    write(tag="playbuflen", value=sound.n_samples + n_delay, processors="RP2")
-    set_signal_and_speaker(sound, speaker, equalize)
-    play()
-    wait_to_finish_playing()
-    if PROCESSORS.mode == "play_rec":  # read the data from buffer and skip the first n_delay samples
-        rec = read(tag='data', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
-        rec = slab.Sound(rec)
-    elif PROCESSORS.mode == "play_birec":  # read data for left and right ear from buffer
-        rec_l = read(tag='datal', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
-        rec_r = read(tag='datar', processor='RP2', n_samples=sound.n_samples + n_delay)[n_delay:]
-        rec = slab.Binaural([rec_l, rec_r])
-    else:
-        raise ValueError("Setup must be initialized in mode 'play_rec' or 'play_birec'!")
-    if compensate_attenuation:
-        if isinstance(rec, slab.Binaural):
-            iid = rec.left.level - rec.right.level
-            rec.level = sound.level
-            rec.left.level += iid
-        else:
-            rec.level = sound.level
-    return rec
 
 def set_logger(level, report=True):
     """
