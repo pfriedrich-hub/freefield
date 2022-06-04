@@ -622,10 +622,10 @@ def play_warning_sound(duration=.5, speaker=23, sound=None):
     Load and play the sound that signals a warning (for example if the listener is in the wrong position)
     """
     if not sound:
-        warning = slab.Sound.clicktrain(duration=duration)
+        sound = slab.Sound.clicktrain(duration=duration)
+        set_signal_and_speaker(signal=sound, speaker=speaker)
     else:
-        warning = sound
-    set_signal_and_speaker(signal=warning, speaker=speaker)
+        set_signal_and_speaker(signal=sound, speaker=speaker)
     play()
 
 
