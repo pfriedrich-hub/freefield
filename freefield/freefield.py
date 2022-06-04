@@ -213,10 +213,8 @@ def wait_to_finish_playing(proc="all", tag="playback"):
     elif isinstance(proc, str):
         proc = [proc]
     logging.info(f'Waiting for {tag} on {proc}.')
-    set_logger('warning', report=False)
     while any(PROCESSORS.read(tag, n_samples=1, proc=p) for p in proc):
         time.sleep(0.01)
-    set_logger('info', report=False)
     logging.info('Done waiting.')
 
 
