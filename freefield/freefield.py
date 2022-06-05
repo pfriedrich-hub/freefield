@@ -303,7 +303,7 @@ def set_signal_and_speaker(signal, speaker, equalize=True):
         to_play = apply_equalization(signal, speaker)
     else:
         to_play = signal
-    PROCESSORS.write(tag='playbuflen', value=to_play.n_samples, processors='all')
+    PROCESSORS.write(tag='playbuflen', value=to_play.n_samples, processors=['RX81', 'RX82'])
     PROCESSORS.write(tag='chan', value=speaker.analog_channel, processors=speaker.analog_proc)
     PROCESSORS.write(tag='data', value=to_play.data, processors=speaker.analog_proc)
     other_procs = set([s.analog_proc for s in SPEAKERS])
@@ -796,3 +796,5 @@ def set_logger(level, report=True):
             print('Logger set to %s.' %level.upper())
     except AttributeError:
         raise AttributeError("Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'")
+
+def is_initialized():
