@@ -796,5 +796,3 @@ def set_logger(level, report=True):
             print('Logger set to %s.' %level.upper())
     except AttributeError:
         raise AttributeError("Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'")
-
-def is_initialized():
