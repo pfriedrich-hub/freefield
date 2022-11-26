@@ -19,7 +19,6 @@ PROCESSORS = Processors()
 SPEAKERS = []  # list of all the loudspeakers in the active setup
 SETUP = ""  # the currently active setup - "dome" or "arc"
 
-
 def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None):
     """
     Initialize the device and load table (and calibration) for the selected setup. Once initialized,
@@ -350,7 +349,8 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
         rec = slab.Binaural([rec_l, rec_r], samplerate=recording_samplerate)
     else:
         raise ValueError("Setup must be initialized in mode 'play_rec' or 'play_birec'!")
-    rec = rec.resample(sound.samplerate)
+    if sound.samplerate != recording_samplerate:
+        rec = rec.resample(sound.samplerate)
     if compensate_attenuation:
         if isinstance(rec, slab.Binaural):
             iid = rec.left.level - rec.right.level
@@ -787,7 +787,7 @@ def set_logger(level, report=True):
     Set the logger to a specific level.
     Parameters:
         level: logging level. Only events of this level and above will be tracked. Can be 'DEBUG', 'INFO', 'WARNING',
-         'ERROR' or 'CRITICAL'
+         'ERROR' or 'CRITICAL'. Set level to '
     """
     try:
         logger = logging.getLogger()
