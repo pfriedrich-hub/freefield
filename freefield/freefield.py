@@ -2,7 +2,7 @@ import time
 from pathlib import Path
 import datetime
 from copy import deepcopy
-import pickle5 as pickle
+import pickle
 from dataclasses import dataclass
 import logging
 import numpy as np
