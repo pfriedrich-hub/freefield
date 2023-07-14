@@ -68,7 +68,7 @@ class Sensor():
         libmetawear.mbl_mw_sensor_fusion_enable_data(sensor.device.board, SensorFusionData.EULER_ANGLE)
         libmetawear.mbl_mw_sensor_fusion_start(sensor.device.board)
         self.device = sensor
-        logging.info('Sensor started')
+        logging.info('Motion sensor connected and running.')
 
     def get_pose(self, n_datapoints=100, calibrate=True, print_pose=False):
         pose_log = numpy.zeros((n_datapoints, 2))

@@ -630,7 +630,7 @@ def calibrate_sensor(limit=0.2):
     logging.debug('calibrating')
     log = np.zeros(2)
     while True:  # wait in loop for sensor to stabilize
-        pose = SENSOR.get_pose()
+        pose = SENSOR.get_pose(calibrate=False)
         log = np.vstack((log, pose))
         # check if orientation is stable for at least 30 data points
         max_logsize = 100
@@ -641,7 +641,7 @@ def calibrate_sensor(limit=0.2):
                 break
     write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     SENSOR.pose_offset = np.around(np.mean(log[-int(max_logsize / 2):].astype('float16'), axis=0), decimals=2)
-    logging.debug('sensor calibration complete.')
+    logging.debug('Sensor calibration complete.')
 
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):

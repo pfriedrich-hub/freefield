@@ -177,7 +177,7 @@ class Processors(object):
             if not rp.Run():
                 logging.warning(f'Failed to run {model} processor')
             else:
-                logging.info(f'{model} {index} processor is running...')
+                logging.info(f'{model}.{index} processor is running.')
             return rp
 
     @staticmethod
