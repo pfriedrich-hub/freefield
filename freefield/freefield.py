@@ -9,17 +9,18 @@ import numpy as np
 import slab
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from freefield import DIR, Processors, cameras
+from freefield import DIR, Processors, cameras, motion_sensor
 
 logging.basicConfig(level=logging.INFO)
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 # Initialize global variables:
 CAMERAS = cameras.Cameras()
 PROCESSORS = Processors()
+SENSOR = motion_sensor.Sensor()
 SPEAKERS = []  # list of all the loudspeakers in the active setup
 SETUP = ""  # the currently active setup - "dome" or "arc"
 
-def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None):
+def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None, sensor=False):
     """
     Initialize the device and load table (and calibration) for the selected setup. Once initialized,
     the setup runs until `halt()` is called. Initialzing device which are already running will flush them.
@@ -38,7 +39,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
         zbus (bool): whether or not to initialize the zbus interface for sending triggers.
         connection (str): type of connection to device, can be "GB" (optical) or "USB"
         camera (str | None): kind of camera that is initialized, can be "webcam", "flir".
-
+        sensor (boolean): If True, initialize head tracking sensor.
     Examples:
         >>> from freefield import initialize, DIR
         >>> # initialize the dome setup with one RX8 processor along with the FLIR cameras:
@@ -48,7 +49,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
         >>> # use the default settings for a freefield localization test:
         >>> initialize(setup="dome", default="loctest_freefield")
     """
-    global PROCESSORS, CAMERAS, SETUP, SPEAKERS
+    global PROCESSORS, CAMERAS, SETUP, SPEAKERS, SENSOR
     # initialize device
     SETUP = setup
     if bool(device) == bool(default):
@@ -59,6 +60,8 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
         PROCESSORS.initialize_default(default)
     if camera is not None:
         CAMERAS = cameras.initialize(camera)
+    if sensor:
+        SENSOR.connect()
     SPEAKERS = read_speaker_table()  # load the table containing the information about the loudspeakers
     try:
         load_equalization()  # load the default equalization
@@ -623,7 +626,27 @@ def play_warning_sound(duration=.5, speaker=23):
     set_signal_and_speaker(signal=warning, speaker=speaker)
     play()
 
-
+def calibrate_sensor(limit=0.2):
+    [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
+    write(tag='bitmask', value=led_speaker.digital_channel,
+          processors=led_speaker.digital_proc)  # illuminate LED
+    logging.debug('rest at center speaker and press button to start calibration...', end="\r", flush=True)
+    wait_for_button()  # start calibration after button press
+    logging.debug('calibrating', end="\r", flush=True)
+    log = np.zeros(2)
+    while True:  # wait in loop for sensor to stabilize
+        pose = SENSOR.get_pose()
+        log = np.vstack((log, pose))
+        # check if orientation is stable for at least 30 data points
+        max_logsize = 100
+        if len(log) > max_logsize:
+            diff = np.mean(np.abs(np.diff(log[-max_logsize:], axis=0)), axis=0).astype('float16')
+            logging.debug('az diff: %f,  ele diff: %f' % (diff[0], diff[1]), end="\r", flush=True)
+            if diff[0] < limit and diff[1] < limit:  # limit in degree
+                break
+    write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    SENSOR.pose_offset = np.around(np.mean(log[-int(max_logsize / 2):].astype('float16'), axis=0), decimals=2)
+    logging.debug('calibration complete.', end="\r", flush=True)
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):
     """
@@ -793,6 +816,6 @@ def set_logger(level, report=True):
         logger = logging.getLogger()
         eval('logger.setLevel(logging.%s)' %level.upper())
         if report:
-            print('Logger set to %s.' %level.upper())
+            logging.info('Logger set to %s.' %level.upper())
     except AttributeError:
         raise AttributeError("Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'")
