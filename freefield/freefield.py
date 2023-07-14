@@ -38,9 +38,8 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
              contains [name, model, file] for one device.
         zbus (bool): whether or not to initialize the zbus interface for sending triggers.
         connection (str): type of connection to device, can be "GB" (optical) or "USB"
-        pose_estimation
         camera (str | None): kind of camera that is initialized, can be "webcam", "flir".
-        sensor (boolean): If True, initialize head tracking sensor.
+        sensor_tracking (boolean): If True, initialize head tracking sensor.
     Examples:
         >>> from freefield import initialize, DIR
         >>> # initialize the dome setup with one RX8 processor along with the FLIR cameras:
@@ -196,6 +195,7 @@ def halt():
     """
     PROCESSORS.halt()
     CAMERAS.halt()
+    SENSOR.halt()
 
 
 def wait_to_finish_playing(proc="all", tag="playback"):
@@ -623,7 +623,14 @@ def check_pose(fix=(0, 0), var=10):
         return True
 
 
-def calibrate_sensor(limit=0.2):
+def calibrate_sensor():
+    """
+    Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
+    towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
+    The average is then used as an offset for pose estimation.
+    """
+    log_size = 100
+    limit = 0.2
     [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
     write(tag='bitmask', value=led_speaker.digital_channel,
           processors=led_speaker.digital_proc)  # illuminate LED
@@ -635,14 +642,13 @@ def calibrate_sensor(limit=0.2):
         pose = SENSOR.get_pose(calibrate=False)
         log = np.vstack((log, pose))
         # check if orientation is stable for at least 30 data points
-        max_logsize = 100
-        if len(log) > max_logsize:
-            diff = np.mean(np.abs(np.diff(log[-max_logsize:], axis=0)), axis=0).astype('float16')
+        if len(log) > log_size:
+            diff = np.mean(np.abs(np.diff(log[-log_size:], axis=0)), axis=0).astype('float16')
             logging.debug('az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
             if diff[0] < limit and diff[1] < limit:  # limit in degree
                 break
     write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
-    SENSOR.pose_offset = np.around(np.mean(log[-int(max_logsize / 2):].astype('float16'), axis=0), decimals=2)
+    SENSOR.pose_offset = np.around(np.mean(log[-int(log_size / 2):].astype('float16'), axis=0), decimals=2)
     logging.debug('Sensor calibration complete.')
 
 

@@ -13,7 +13,6 @@ class State:
         self.pose = None
     # callback
     def data_handler(self, ctx, data):
-        # print("QUAT: %s -> %s" % (self.device.address, parse_value(data)))
         self.pose = parse_value(data)
         self.samples += 1
 
@@ -26,7 +25,7 @@ class Sensor():
         """
         Scan Bluetooth environment for the motion sensor and connect to the device.
         Returns:
-            (instance of Sensor): Object for handling the initialized sensors.
+            (instance of Sensor): Object for handling the initialized sensor.
         """
         def handler(result):
             devices[result.mac] = result.name
@@ -70,7 +69,7 @@ class Sensor():
         self.device = sensor
         logging.info('Motion sensor connected and running')
 
-    def get_pose(self, n_datapoints=100, calibrate=True, print_pose=False):
+    def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False):
         pose_log = numpy.zeros((n_datapoints, 2))
         n = 0
         while n < n_datapoints:  # filter invalid values
@@ -100,18 +99,19 @@ class Sensor():
                     logging.warning("Could not detect head pose")
         return pose
 
-    def disconnect(self):
-        libmetawear.mbl_mw_sensor_fusion_stop(self.device.device.board);
-        # unsubscribe to signal
-        signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(self.device.device.board, SensorFusionData.EULER_ANGLE);
-        libmetawear.mbl_mw_datasignal_unsubscribe(signal)
-        # disconnect
-        libmetawear.mbl_mw_debug_disconnect(self.device.device.board)
-        while not self.device.device.is_connected:
-            time.sleep(0.1)
-        self.device.device.disconnect()
-        self.device = None
-        logging.info('Motion sensor disconnected')
+    def halt(self):
+        if self.device:
+            libmetawear.mbl_mw_sensor_fusion_stop(self.device.device.board);
+            # unsubscribe to signal
+            signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(self.device.device.board, SensorFusionData.EULER_ANGLE);
+            libmetawear.mbl_mw_datasignal_unsubscribe(signal)
+            # disconnect
+            libmetawear.mbl_mw_debug_disconnect(self.device.device.board)
+            while not self.device.device.is_connected:
+                time.sleep(0.1)
+            self.device.device.disconnect()
+            self.device = None
+            logging.info('Motion sensor disconnected')
 
 
 
