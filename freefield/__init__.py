@@ -7,4 +7,5 @@ DIR = pathlib.Path(__file__).parent.resolve()
 
 from freefield.processors import Processors
 from freefield.cameras import Cameras
+from freefield.motion_sensor import Sensor
 from freefield.freefield import *

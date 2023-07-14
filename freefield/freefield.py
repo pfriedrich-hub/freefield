@@ -9,17 +9,18 @@ import numpy as np
 import slab
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from freefield import DIR, Processors, cameras
+from freefield import DIR, Processors, cameras, motion_sensor
 
 logging.basicConfig(level=logging.INFO)
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 # Initialize global variables:
 CAMERAS = cameras.Cameras()
 PROCESSORS = Processors()
+SENSOR = motion_sensor.Sensor()
 SPEAKERS = []  # list of all the loudspeakers in the active setup
 SETUP = ""  # the currently active setup - "dome" or "arc"
 
-def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None):
+def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None, sensor_tracking=False):
     """
     Initialize the device and load table (and calibration) for the selected setup. Once initialized,
     the setup runs until `halt()` is called. Initialzing device which are already running will flush them.
@@ -38,7 +39,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
         zbus (bool): whether or not to initialize the zbus interface for sending triggers.
         connection (str): type of connection to device, can be "GB" (optical) or "USB"
         camera (str | None): kind of camera that is initialized, can be "webcam", "flir".
-
+        sensor_tracking (boolean): If True, initialize head tracking sensor.
     Examples:
         >>> from freefield import initialize, DIR
         >>> # initialize the dome setup with one RX8 processor along with the FLIR cameras:
@@ -48,7 +49,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
         >>> # use the default settings for a freefield localization test:
         >>> initialize(setup="dome", default="loctest_freefield")
     """
-    global PROCESSORS, CAMERAS, SETUP, SPEAKERS
+    global PROCESSORS, CAMERAS, SETUP, SPEAKERS, SENSOR
     # initialize device
     SETUP = setup
     if bool(device) == bool(default):
@@ -58,7 +59,9 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     elif default is not None:
         PROCESSORS.initialize_default(default)
     if camera is not None:
-        CAMERAS = cameras.initialize(camera)
+        CAMERAS = cameras.initialize('flir')
+    if sensor_tracking:
+        SENSOR.connect()
     SPEAKERS = read_speaker_table()  # load the table containing the information about the loudspeakers
     try:
         load_equalization()  # load the default equalization
@@ -192,6 +195,7 @@ def halt():
     """
     PROCESSORS.halt()
     CAMERAS.halt()
+    SENSOR.halt()
 
 
 def wait_to_finish_playing(proc="all", tag="playback"):
@@ -211,10 +215,10 @@ def wait_to_finish_playing(proc="all", tag="playback"):
         proc = list(PROCESSORS.processors.keys())
     elif isinstance(proc, str):
         proc = [proc]
-    logging.info(f'Waiting for {tag} on {proc}.')
+    logging.debug(f'Waiting for {tag} on {proc}.')
     while any(PROCESSORS.read(tag, n_samples=1, proc=p) for p in proc):
         time.sleep(0.01)
-    logging.info('Done waiting.')
+    logging.debug('Done waiting.')
 
 
 def wait_for_button(proc="RP2", tag="response"):
@@ -575,13 +579,27 @@ def spectral_range(signal, bandwidth=1 / 5, low_cutoff=50, high_cutoff=20000, th
     return difference
 
 
-def get_head_pose(n_images=1):
-    """Wrapper for the get headpose method of the camera class"""
-    if not CAMERAS.n_cams:
-        raise ValueError("No cameras initialized!")
+def get_head_pose(method='sensor'):
+    """
+    Wrapper for the get headpose methods of the camera and sensor classes
+
+    Args:
+        method (string): Method use for headpose estimation. Can be "camera" or "sensor"
+    """
+    if method.lower() == 'camera':
+        if not CAMERAS.n_cams:
+            raise ValueError("No cameras initialized!")
+        else:
+            azi, ele = CAMERAS.get_head_pose(convert=True, average_axis=(1, 2), n_images=1)
+            head_pose = np.array(azi, ele)
+    elif method.lower() == 'sensor':
+        if not SENSOR.device:
+            raise ValueError("No sensor connected!")
+        else:
+            head_pose = SENSOR.get_pose()
     else:
-        azi, ele = CAMERAS.get_head_pose(convert=True, average_axis=(1, 2), n_images=n_images)
-    return azi, ele
+        raise ValueError("Method must be 'camera' or 'sensor'")
+    return head_pose
 
 
 def check_pose(fix=(0, 0), var=10):
@@ -605,24 +623,33 @@ def check_pose(fix=(0, 0), var=10):
         return True
 
 
-# functions implementing complete procedures:
-def play_start_sound(speaker=23):
+def calibrate_sensor():
     """
-    Load and play the sound that signals the start and end of an experiment/block
+    Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
+    towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
+    The average is then used as an offset for pose estimation.
     """
-    start = slab.Sound.read(DIR / "data" / "sounds" / "start.wav")
-    set_signal_and_speaker(signal=start, speaker=speaker)
-    play()
-
-
-def play_warning_sound(duration=.5, speaker=23):
-    """
-    Load and play the sound that signals a warning (for example if the listener is in the wrong position)
-    """
-    warning = slab.Sound.clicktrain(duration=duration)
-    set_signal_and_speaker(signal=warning, speaker=speaker)
-    play()
-
+    log_size = 100
+    limit = 0.2
+    [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
+    write(tag='bitmask', value=led_speaker.digital_channel,
+          processors=led_speaker.digital_proc)  # illuminate LED
+    logging.debug('rest at center speaker and press button to start calibration...')
+    wait_for_button()  # start calibration after button press
+    logging.debug('calibrating')
+    log = np.zeros(2)
+    while True:  # wait in loop for sensor to stabilize
+        pose = SENSOR.get_pose(calibrate=False)
+        log = np.vstack((log, pose))
+        # check if orientation is stable for at least 30 data points
+        if len(log) > log_size:
+            diff = np.mean(np.abs(np.diff(log[-log_size:], axis=0)), axis=0).astype('float16')
+            logging.debug('az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
+            if diff[0] < limit and diff[1] < limit:  # limit in degree
+                break
+    write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    SENSOR.pose_offset = np.around(np.mean(log[-int(log_size / 2):].astype('float16'), axis=0), decimals=2)
+    logging.debug('Sensor calibration complete.')
 
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):
@@ -782,6 +809,25 @@ def localization_test_headphones(speakers, signals, n_reps=1, n_images=5, visual
     return seq
 
 
+# functions implementing complete procedures:
+def play_start_sound(speaker=23):
+    """
+    Load and play the sound that signals the start and end of an experiment/block
+    """
+    start = slab.Sound.read(DIR / "data" / "sounds" / "start.wav")
+    set_signal_and_speaker(signal=start, speaker=speaker)
+    play()
+
+
+def play_warning_sound(duration=.5, speaker=23):
+    """
+    Load and play the sound that signals a warning (for example if the listener is in the wrong position)
+    """
+    warning = slab.Sound.clicktrain(duration=duration)
+    set_signal_and_speaker(signal=warning, speaker=speaker)
+    play()
+
+
 def set_logger(level, report=True):
     """
     Set the logger to a specific level.
@@ -793,6 +839,6 @@ def set_logger(level, report=True):
         logger = logging.getLogger()
         eval('logger.setLevel(logging.%s)' %level.upper())
         if report:
-            print('Logger set to %s.' %level.upper())
+            logging.info('Logger set to %s.' %level.upper())
     except AttributeError:
         raise AttributeError("Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'")

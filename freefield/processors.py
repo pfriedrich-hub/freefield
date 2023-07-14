@@ -45,7 +45,7 @@ class Processors(object):
             # advance index if a model appears more then once
             models.append(model)
             index = Counter(models)[model]
-            print(f"initializing {name} of type {model} with index {index}")
+            logging.debug(f"initializing {name} of type {model} with index {index}")
             self.processors[name] = self._initialize_proc(model, circuit,
                                                           connection, index)
         if zbus:
@@ -77,7 +77,7 @@ class Processors(object):
         else:
             raise ValueError(f'mode {mode} is not a valid input!')
         self.mode = mode
-        logging.info(f'set mode to {mode}')
+        logging.debug(f'set mode to {mode}')
         self.initialize(proc_list, True, "GB")
 
     def write(self, tag, value, processors):
@@ -102,10 +102,10 @@ class Processors(object):
                 flag = self.processors[proc]._oleobj_.InvokeTypes(
                     15, 0x0, 1, (3, 0), ((8, 0), (3, 0), (0x2005, 0)),
                     tag, 0, value)
-                logging.info(f'Set {tag} on {proc}.')
+                logging.debug(f'Set {tag} on {proc}.')
             else:
                 flag = self.processors[proc].SetTagVal(tag, value)
-                logging.info(f'Set {tag} to {value} on {proc}.')
+                logging.debug(f'Set {tag} to {value} on {proc}.')
             if flag == 0:
                 logging.warning(f'Unable to set tag {tag} on {proc}')
         return flag
@@ -115,7 +115,7 @@ class Processors(object):
             value = np.asarray(self.processors[proc].ReadTagV(tag, 0, n_samples))
         else:
             value = self.processors[proc].GetTagVal(tag)
-        logging.info(f'Got {tag} from {proc}.')
+        logging.debug(f'Got {tag} from {proc}.')
         return value
 
     def halt(self):
@@ -133,13 +133,13 @@ class Processors(object):
             if not 1<= kind >= 10:
                 raise ValueError("software triggers must be between 1 and 10!")
             self.processors[proc].SoftTrg(kind)
-            logging.info(f'SoftTrig {kind} sent to {proc}.')
+            logging.debug(f'SoftTrig {kind} sent to {proc}.')
         elif 'zbus' in kind.lower():
             if self._zbus is None:
                 raise ValueError('ZBus needs to be initialized first!')
             elif kind.lower() == "zbusa":
                 self._zbus.zBusTrigA(0, 0, 20)
-                logging.info('zBusA trigger sent.')
+                logging.debug('zBusA trigger sent.')
             elif kind.lower() == "zbusb":
                 self._zbus.zBusTrigB(0, 0, 20)
         else:
@@ -155,7 +155,7 @@ class Processors(object):
                 raise ValueError(err)
         else:
             rp = _COM()
-        logging.info(f'Connecting to {model} processor ...')
+        logging.debug(f'Connecting to {model} processor ...')
         connected = 0
         if model.upper() == 'RP2':
             connected = rp.ConnectRP2(connection, index)
@@ -173,11 +173,11 @@ class Processors(object):
             if not rp.LoadCOF(circuit):
                 logging.warning(f'could not load {circuit}.')
             else:
-                logging.info(f'{circuit} loaded!')
+                logging.debug(f'{circuit} loaded!')
             if not rp.Run():
                 logging.warning(f'Failed to run {model} processor')
             else:
-                logging.info(f'{model} processor is running...')
+                logging.info(f'Processor {model} index {index} is running')
             return rp
 
     @staticmethod
@@ -189,7 +189,7 @@ class Processors(object):
             except win32com.client.pythoncom.com_error as err:
                 logging.warning(err)
         if zb.ConnectZBUS(connection):
-            logging.info('Connected to ZBUS.')
+            logging.debug('Connected to ZBUS.')
         else:
             logging.warning('Failed to connect to ZBUS.')
         return zb
