@@ -70,6 +70,16 @@ class Sensor():
         logging.info('Motion sensor connected and running')
 
     def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False):
+        """
+        Read orientation in polar angle from the motion sensor.
+        Args:
+            n_datapoints (int): Number of data points from which an average orientation is calculated.
+            calibrate (boolean): Whether to subtract an offset from the orientation.
+            print_pose (boolean): If true, continuously print out orientation.
+
+        Returns:
+            pose (numpy.ndarray): Sensor orientation in polar angles.
+        """
         pose_log = numpy.zeros((n_datapoints, 2))
         n = 0
         while n < n_datapoints:  # filter invalid values
@@ -100,6 +110,9 @@ class Sensor():
         return pose
 
     def halt(self):
+        """
+        Disconnect the motion sensor.
+        """
         if self.device:
             libmetawear.mbl_mw_sensor_fusion_stop(self.device.device.board);
             # unsubscribe to signal
