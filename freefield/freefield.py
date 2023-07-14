@@ -592,11 +592,13 @@ def get_head_pose(method='sensor'):
         else:
             azi, ele = CAMERAS.get_head_pose(convert=True, average_axis=(1, 2), n_images=1)
             head_pose = np.array(azi, ele)
-    elif method.lover() == 'sensor':
+    elif method.lower() == 'sensor':
         if not SENSOR.device:
             raise ValueError("No sensor connected!")
         else:
             head_pose = SENSOR.get_pose()
+    else:
+        raise ValueError("Method must be 'camera' or 'sensor'")
     return head_pose
 
 

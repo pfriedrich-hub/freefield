@@ -33,26 +33,26 @@ class Sensor():
         devices = {}
         BleScanner.set_handler(handler)
         BleScanner.start()
-        logging.debug("scanning for devices...")
+        logging.debug("Scanning for motion sensor")
         t_start = time.time()
         while not 'MetaWear' in devices.values():
             time.sleep(0.1)  # scanning for devices time
             if time.time() > t_start + 20:
-                logging.warning("Could not find Sensor")
+                logging.warning("Could not find motion sensor")
                 return None
         BleScanner.stop()
         for idx, device in enumerate(devices.values()):
             if device == 'MetaWear':
                 address = list(devices.keys())[idx]
-        logging.debug("Connecting to %s..." % (address))
+        logging.debug("Connecting to %s" % (address))
         device = MetaWear(address)
         while not device.is_connected:
             try:
                 device.connect()
             except:
-                logging.debug('connecting to sensor')
+                logging.debug('Connecting to motion sensor')
         sensor = (State(device))
-        logging.debug("configuring sensor")
+        logging.debug("Configuring motion sensor")
         # setup ble
         libmetawear.mbl_mw_settings_set_connection_parameters(sensor.device.board, 7.5, 7.5, 0, 6000)
         # setup quaternion
@@ -68,7 +68,7 @@ class Sensor():
         libmetawear.mbl_mw_sensor_fusion_enable_data(sensor.device.board, SensorFusionData.EULER_ANGLE)
         libmetawear.mbl_mw_sensor_fusion_start(sensor.device.board)
         self.device = sensor
-        logging.info('Motion sensor connected and running.')
+        logging.info('Motion sensor connected and running')
 
     def get_pose(self, n_datapoints=100, calibrate=True, print_pose=False):
         pose_log = numpy.zeros((n_datapoints, 2))
@@ -89,14 +89,14 @@ class Sensor():
             if all(pose):
                 logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
             else:
-                logging.warning("Could not detect head pose.")
+                logging.warning("Could not detect head pose")
         if self.pose_offset is not None and calibrate is True:
             if all(pose):
                 pose = pose - self.pose_offset
             else:
-                logging.warning("Could not detect head pose.")
+                logging.warning("Could not detect head pose")
         else:
-            logging.warning("Device not calibrated!")
+            logging.warning("Device not calibrated")
         return pose
 
     def disconnect(self):
@@ -110,7 +110,7 @@ class Sensor():
             time.sleep(0.1)
         self.device.device.disconnect()
         self.device = None
-        logging.info('sensor disconnected')
+        logging.info('Motion sensor disconnected')
 
 
 
