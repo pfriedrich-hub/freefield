@@ -90,13 +90,14 @@ class Sensor():
                 logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
             else:
                 logging.warning("Could not detect head pose")
-        if self.pose_offset is not None and calibrate is True:
-            if all(pose):
-                pose = pose - self.pose_offset
+        if calibrate is True:
+            if self.pose_offset is None:
+                logging.warning("Device not calibrated")
             else:
-                logging.warning("Could not detect head pose")
-        else:
-            logging.warning("Device not calibrated")
+                if all(pose):
+                    pose = pose - self.pose_offset
+                else:
+                    logging.warning("Could not detect head pose")
         return pose
 
     def disconnect(self):
