@@ -1,11 +1,8 @@
 from __future__ import print_function
-from mbientlab.metawear import MetaWear
-from mbientlab.metawear.cbindings import *
 from mbientlab.warble import *
+from mbientlab.metawear import *
 import time
 import numpy
-# import platform
-# import six
 import logging
 
 class State:
@@ -35,15 +32,19 @@ class Sensor():
         def handler(result):
             devices[result.mac] = result.name
         devices = {}
-        while not 'Metawear' in devices:
-            logging.debug("scanning for devices...")
-            BleScanner.set_handler(handler)
-            BleScanner.start()
-            time.sleep(3.0)  # scanning for devices time
-            BleScanner.stop()
-        for idx, device in enumerate(devices):
-            if device == 'Metawear':
-                address = list(devices)[idx]
+        BleScanner.set_handler(handler)
+        BleScanner.start()
+        logging.debug("scanning for devices...")
+        t_start = time.time()
+        while not 'MetaWear' in devices.values():
+            time.sleep(0.1)  # scanning for devices time
+            if time.time() > t_start + 20:
+                logging.error("Could not find Sensor")
+                return None
+        BleScanner.stop()
+        for idx, device in enumerate(devices.values()):
+            if device == 'MetaWear':
+                address = list(devices.keys())[idx]
         logging.debug("Connecting to %s..." % (address))
         device = MetaWear(address)
         while not device.is_connected:
@@ -55,7 +56,6 @@ class Sensor():
         logging.debug("configuring sensor")
         # setup ble
         libmetawear.mbl_mw_settings_set_connection_parameters(sensor.device.board, 7.5, 7.5, 0, 6000)
-        # time.sleep(1.5)
         # setup quaternion
         libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.NDOF)
         libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.IMU_PLUS)
@@ -94,9 +94,9 @@ class Sensor():
         libmetawear.mbl_mw_datasignal_unsubscribe(signal)
         # disconnect
         libmetawear.mbl_mw_debug_disconnect(self.device.device.board)
-        while not self.device.is_connected:
+        while not self.device.device.is_connected:
             time.sleep(0.1)
-        self.device.disconnect
+        self.device.device.disconnect
         self.device = None
         logging.info('sensor disconnected')
 
