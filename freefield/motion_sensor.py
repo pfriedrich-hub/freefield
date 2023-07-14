@@ -20,7 +20,6 @@ class State:
 class Sensor():
     def __init__(self):
         self.device = None
-        self.pose = None
         self.pose_offset = None
 
     def connect(self):
@@ -71,7 +70,7 @@ class Sensor():
         self.device = sensor
         logging.info('Sensor started')
 
-    def get_pose(self, n_datapoints=100):
+    def get_pose(self, n_datapoints=100, calibrate=True, print_pose=False):
         pose_log = numpy.zeros((n_datapoints, 2))
         n = 0
         while n < n_datapoints:  # filter invalid values
@@ -85,7 +84,20 @@ class Sensor():
         d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
         mdev = numpy.median(d)  # median deviation
         s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
-        self.pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
+        pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
+        if print_pose:
+            if all(pose):
+                logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
+            else:
+                logging.warning("Could not detect head pose.", end="\r", flush=True)
+        if self.pose_offset is not None and calibrate is True:
+            if all(pose):
+                pose = pose - self.pose_offset
+            else:
+                logging.warning("Could not detect head pose.", end="\r", flush=True)
+        else:
+            logging.warning("Device not calibrated!", end="\r", flush=True)
+        return pose
 
     def disconnect(self):
         libmetawear.mbl_mw_sensor_fusion_stop(self.device.device.board);
@@ -100,11 +112,6 @@ class Sensor():
         self.device = None
         logging.info('sensor disconnected')
 
-    def print_pose(self):
-        if all(self.pose):
-            print('head pose: azimuth: %.1f, elevation: %.1f' % (self.pose[0], self.pose[1]), end="\r", flush=True)
-        else:
-            print('no head pose detected', end="\r", flush=True)
 
 
 

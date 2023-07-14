@@ -578,13 +578,25 @@ def spectral_range(signal, bandwidth=1 / 5, low_cutoff=50, high_cutoff=20000, th
     return difference
 
 
-def get_head_pose(n_images=1):
-    """Wrapper for the get headpose method of the camera class"""
-    if not CAMERAS.n_cams:
-        raise ValueError("No cameras initialized!")
-    else:
-        azi, ele = CAMERAS.get_head_pose(convert=True, average_axis=(1, 2), n_images=n_images)
-    return azi, ele
+def get_head_pose(method='sensor'):
+    """
+    Wrapper for the get headpose methods of the camera and sensor classes
+
+    Args:
+        method (string): Method use for headpose estimation. Can be "camera" or "sensor"
+    """
+    if method.lower() == 'camera':
+        if not CAMERAS.n_cams:
+            raise ValueError("No cameras initialized!")
+        else:
+            azi, ele = CAMERAS.get_head_pose(convert=True, average_axis=(1, 2), n_images=1)
+            head_pose = np.array(azi, ele)
+    elif method.lover() == 'sensor':
+        if not SENSOR.device:
+            raise ValueError("No sensor connected!")
+        else:
+            head_pose = SENSOR.get_pose()
+    return head_pose
 
 
 def check_pose(fix=(0, 0), var=10):
@@ -608,24 +620,6 @@ def check_pose(fix=(0, 0), var=10):
         return True
 
 
-# functions implementing complete procedures:
-def play_start_sound(speaker=23):
-    """
-    Load and play the sound that signals the start and end of an experiment/block
-    """
-    start = slab.Sound.read(DIR / "data" / "sounds" / "start.wav")
-    set_signal_and_speaker(signal=start, speaker=speaker)
-    play()
-
-
-def play_warning_sound(duration=.5, speaker=23):
-    """
-    Load and play the sound that signals a warning (for example if the listener is in the wrong position)
-    """
-    warning = slab.Sound.clicktrain(duration=duration)
-    set_signal_and_speaker(signal=warning, speaker=speaker)
-    play()
-
 def calibrate_sensor(limit=0.2):
     [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
     write(tag='bitmask', value=led_speaker.digital_channel,
@@ -646,7 +640,8 @@ def calibrate_sensor(limit=0.2):
                 break
     write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     SENSOR.pose_offset = np.around(np.mean(log[-int(max_logsize / 2):].astype('float16'), axis=0), decimals=2)
-    logging.debug('calibration complete.', end="\r", flush=True)
+    logging.debug('sensor calibration complete.', end="\r", flush=True)
+
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):
     """
@@ -803,6 +798,25 @@ def localization_test_headphones(speakers, signals, n_reps=1, n_images=5, visual
     # change conditions property so it contains the only azimuth and elevation of the source
     seq.conditions = np.array([(s.azimuth, s.elevation) for s in seq.conditions])
     return seq
+
+
+# functions implementing complete procedures:
+def play_start_sound(speaker=23):
+    """
+    Load and play the sound that signals the start and end of an experiment/block
+    """
+    start = slab.Sound.read(DIR / "data" / "sounds" / "start.wav")
+    set_signal_and_speaker(signal=start, speaker=speaker)
+    play()
+
+
+def play_warning_sound(duration=.5, speaker=23):
+    """
+    Load and play the sound that signals a warning (for example if the listener is in the wrong position)
+    """
+    warning = slab.Sound.clicktrain(duration=duration)
+    set_signal_and_speaker(signal=warning, speaker=speaker)
+    play()
 
 
 def set_logger(level, report=True):
