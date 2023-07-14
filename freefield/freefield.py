@@ -20,7 +20,7 @@ SENSOR = motion_sensor.Sensor()
 SPEAKERS = []  # list of all the loudspeakers in the active setup
 SETUP = ""  # the currently active setup - "dome" or "arc"
 
-def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None, sensor=False):
+def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None, sensor_tracking=False):
     """
     Initialize the device and load table (and calibration) for the selected setup. Once initialized,
     the setup runs until `halt()` is called. Initialzing device which are already running will flush them.
@@ -38,6 +38,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
              contains [name, model, file] for one device.
         zbus (bool): whether or not to initialize the zbus interface for sending triggers.
         connection (str): type of connection to device, can be "GB" (optical) or "USB"
+        pose_estimation
         camera (str | None): kind of camera that is initialized, can be "webcam", "flir".
         sensor (boolean): If True, initialize head tracking sensor.
     Examples:
@@ -59,8 +60,8 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     elif default is not None:
         PROCESSORS.initialize_default(default)
     if camera is not None:
-        CAMERAS = cameras.initialize(camera)
-    if sensor:
+        CAMERAS = cameras.initialize('flir')
+    if sensor_tracking:
         SENSOR.connect()
     SPEAKERS = read_speaker_table()  # load the table containing the information about the loudspeakers
     try:
@@ -214,10 +215,10 @@ def wait_to_finish_playing(proc="all", tag="playback"):
         proc = list(PROCESSORS.processors.keys())
     elif isinstance(proc, str):
         proc = [proc]
-    logging.info(f'Waiting for {tag} on {proc}.')
+    logging.debug(f'Waiting for {tag} on {proc}.')
     while any(PROCESSORS.read(tag, n_samples=1, proc=p) for p in proc):
         time.sleep(0.01)
-    logging.info('Done waiting.')
+    logging.debug('Done waiting.')
 
 
 def wait_for_button(proc="RP2", tag="response"):
@@ -624,9 +625,9 @@ def calibrate_sensor(limit=0.2):
     [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
     write(tag='bitmask', value=led_speaker.digital_channel,
           processors=led_speaker.digital_proc)  # illuminate LED
-    logging.debug('rest at center speaker and press button to start calibration...', end="\r", flush=True)
+    logging.debug('rest at center speaker and press button to start calibration...')
     wait_for_button()  # start calibration after button press
-    logging.debug('calibrating', end="\r", flush=True)
+    logging.debug('calibrating')
     log = np.zeros(2)
     while True:  # wait in loop for sensor to stabilize
         pose = SENSOR.get_pose()
@@ -635,12 +636,12 @@ def calibrate_sensor(limit=0.2):
         max_logsize = 100
         if len(log) > max_logsize:
             diff = np.mean(np.abs(np.diff(log[-max_logsize:], axis=0)), axis=0).astype('float16')
-            logging.debug('az diff: %f,  ele diff: %f' % (diff[0], diff[1]), end="\r", flush=True)
+            logging.debug('az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
             if diff[0] < limit and diff[1] < limit:  # limit in degree
                 break
     write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     SENSOR.pose_offset = np.around(np.mean(log[-int(max_logsize / 2):].astype('float16'), axis=0), decimals=2)
-    logging.debug('sensor calibration complete.', end="\r", flush=True)
+    logging.debug('sensor calibration complete.')
 
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):

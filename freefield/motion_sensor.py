@@ -38,7 +38,7 @@ class Sensor():
         while not 'MetaWear' in devices.values():
             time.sleep(0.1)  # scanning for devices time
             if time.time() > t_start + 20:
-                logging.error("Could not find Sensor")
+                logging.warning("Could not find Sensor")
                 return None
         BleScanner.stop()
         for idx, device in enumerate(devices.values()):
@@ -50,7 +50,7 @@ class Sensor():
             try:
                 device.connect()
             except:
-                logging.debug('connecting to sensor', end="\r")
+                logging.debug('connecting to sensor')
         sensor = (State(device))
         logging.debug("configuring sensor")
         # setup ble
@@ -87,16 +87,16 @@ class Sensor():
         pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
         if print_pose:
             if all(pose):
-                logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
+                logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
             else:
-                logging.warning("Could not detect head pose.", end="\r", flush=True)
+                logging.warning("Could not detect head pose.")
         if self.pose_offset is not None and calibrate is True:
             if all(pose):
                 pose = pose - self.pose_offset
             else:
-                logging.warning("Could not detect head pose.", end="\r", flush=True)
+                logging.warning("Could not detect head pose.")
         else:
-            logging.warning("Device not calibrated!", end="\r", flush=True)
+            logging.warning("Device not calibrated!")
         return pose
 
     def disconnect(self):
@@ -108,7 +108,7 @@ class Sensor():
         libmetawear.mbl_mw_debug_disconnect(self.device.device.board)
         while not self.device.device.is_connected:
             time.sleep(0.1)
-        self.device.device.disconnect
+        self.device.device.disconnect()
         self.device = None
         logging.info('sensor disconnected')
 
