@@ -10,10 +10,10 @@ try:
     import PySpin
 except ModuleNotFoundError:
     PySpin = False
-try:
-    import headpose
-except ModuleNotFoundError:
-    headpose = False
+# try:
+#     import headpose
+# except ModuleNotFoundError:
+#     headpose = False
 
 def initialize(kind="flir"):
     """
