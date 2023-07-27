@@ -302,7 +302,7 @@ def set_signal_and_speaker(signal, speaker, equalize=True):
     signal = slab.Sound(signal)
     speaker = pick_speakers(speaker)[0]
     if equalize:
-        logging.info('Applying calibration.')  # apply level and frequency calibration
+        logging.debug('Applying calibration.')  # apply level and frequency calibration
         to_play = apply_equalization(signal, speaker)
     else:
         to_play = signal
