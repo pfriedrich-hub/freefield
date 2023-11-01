@@ -331,6 +331,7 @@ def set_speaker(speaker):
     other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
+
 def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
                     recording_samplerate=97656):
     """
