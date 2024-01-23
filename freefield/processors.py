@@ -189,7 +189,7 @@ class Processors(object):
             except win32com.client.pythoncom.com_error as err:
                 logging.warning(err)
         if zb.ConnectZBUS(connection):
-            logging.debug('Connected to ZBUS.')
+            logging.info('Connected to ZBUS.')
         else:
             logging.warning('Failed to connect to ZBUS.')
         return zb

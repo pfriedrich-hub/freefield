@@ -13,7 +13,7 @@ except ModuleNotFoundError:
 # try:
 #     import headpose
 # except ModuleNotFoundError:
-#     headpose = False
+headpose = False
 
 def initialize(kind="flir"):
     """
