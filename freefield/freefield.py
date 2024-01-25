@@ -629,19 +629,26 @@ def check_pose(fix=(0, 0), var=10):
         return True
 
 
-def calibrate_sensor():
+def calibrate_sensor(led_feedback=True, button_control=True):
     """
     Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
     towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
     The average is then used as an offset for pose estimation.
+        Args:
+        led_feedback: whether to turn on the central led to assist gaze control during calibration
+        button_control: whether to initialize calibration by button response
+    Returns:
+        bool: True if difference between pose and fix is smaller than var, False otherwise
     """
     log_size = 100
     limit = 0.2
-    [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
-    write(tag='bitmask', value=led_speaker.digital_channel,
-          processors=led_speaker.digital_proc)  # illuminate LED
-    logging.debug('rest at center speaker and press button to start calibration...')
-    wait_for_button()  # start calibration after button press
+    if led_feedback:
+        [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
+        write(tag='bitmask', value=led_speaker.digital_channel,
+              processors=led_speaker.digital_proc)  # illuminate LED
+    if button_control:
+        logging.debug('rest at center speaker and press button to start calibration...')
+        wait_for_button()  # start calibration after button press
     logging.debug('calibrating')
     log = np.zeros(2)
     while True:  # wait in loop for sensor to stabilize
@@ -653,9 +660,10 @@ def calibrate_sensor():
             logging.debug('az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
             if diff[0] < limit and diff[1] < limit:  # limit in degree
                 break
-    write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    if led_feedback:
+        write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     SENSOR.pose_offset = np.around(np.mean(log[-int(log_size / 2):].astype('float16'), axis=0), decimals=2)
-    logging.debug('Sensor calibration complete.')
+    logging.debug('Sensor calibration complete.
 
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):
