@@ -663,7 +663,7 @@ def calibrate_sensor(led_feedback=True, button_control=True):
     if led_feedback:
         write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     SENSOR.pose_offset = np.around(np.mean(log[-int(log_size / 2):].astype('float16'), axis=0), decimals=2)
-    logging.debug('Sensor calibration complete.
+    logging.debug('Sensor calibration complete.')
 
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):
