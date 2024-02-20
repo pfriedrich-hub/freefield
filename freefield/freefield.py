@@ -289,7 +289,7 @@ def shift_setup(delta_azi, delta_ele):
     print(f"shifting the loudspeaker array by {delta_azi} in azimuth and {delta_ele} in elevation")
 
 
-def set_signal_and_speaker(signal, speaker, equalize=True):
+def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan_tag='chan', play_tag='playbuflen'):
     """
     Load a signal into the processor buffer and set the output channel to match the speaker.
     The processor is chosen automatically depending on the speaker.
@@ -298,6 +298,9 @@ def set_signal_and_speaker(signal, speaker, equalize=True):
             signal (array-like): signal to load to the buffer, must be one-dimensional
             speaker (Speaker, int) : speaker to play the signal from, can be index number or [azimuth, elevation]
             equalize (bool): if True (=default) apply loudspeaker equalization
+            data_tag ('string'): Name of the tag feeding into the signal buffer
+            chan_tag ('string'): Name of the tag setting the output channel number
+            play_tag ('string'): Name of the tag connected to the playback switch
     """
     signal = slab.Sound(signal)
     speaker = pick_speakers(speaker)[0]
@@ -306,12 +309,12 @@ def set_signal_and_speaker(signal, speaker, equalize=True):
         to_play = apply_equalization(signal, speaker)
     else:
         to_play = signal
-    PROCESSORS.write(tag='playbuflen', value=to_play.n_samples, processors=['RX81', 'RX82'])
-    PROCESSORS.write(tag='chan', value=speaker.analog_channel, processors=speaker.analog_proc)
-    PROCESSORS.write(tag='data', value=to_play.data, processors=speaker.analog_proc)
+    PROCESSORS.write(tag=play_tag, value=to_play.n_samples, processors=['RX81', 'RX82'])
+    PROCESSORS.write(tag=chan_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
+    PROCESSORS.write(tag=data_tag, value=to_play.data, processors=speaker.analog_proc)
     other_procs = set([s.analog_proc for s in SPEAKERS])
     other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
-    PROCESSORS.write(tag='chan', value=99, processors=other_procs)
+    PROCESSORS.write(tag=chan_tag, value=99, processors=other_procs)
 
 def set_speaker(speaker):
     speaker = pick_speakers(speaker)[0]
