@@ -591,6 +591,9 @@ def get_head_pose(method='sensor'):
 
     Args:
         method (string): Method use for headpose estimation. Can be "camera" or "sensor"
+    Returns:
+        head_pose (numpy.ndarray): Array containing spheric coordinates of
+        the current head orientation: (Azimuth, Elevation)
     """
     if method.lower() == 'camera':
         if not CAMERAS.n_cams:
@@ -628,6 +631,29 @@ def check_pose(fix=(0, 0), var=10):
     else:
         return True
 
+def get_head_response(method='sensor', proc="RP2", tag="response"):
+    """
+    Get participants localization response by pointing their head towards the perceived
+     sound source and pressing a button.
+    Args:
+        method (string): Method use for headpose estimation. Can be "camera" or "sensor".
+        proc (string): Precssor that reads out the button response
+        tag (string): Name of the Tag in the RPvdsEX file connected to the button input
+    Returns:
+        head_pose (numpy.ndarray): Array containing spheric coordinates of
+        the current head orientation: (Azimuth, Elevation)
+    """
+    response = 0
+    while not response:
+        pose = get_head_pose(method)
+        if all(pose):
+            print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
+        else:
+            print('no head pose detected', end="\r", flush=True)
+        response = read(tag, proc)
+    if all(pose):
+        print('Response| azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
+    return pose
 
 def calibrate_sensor(led_feedback=True, button_control=True):
     """
@@ -643,7 +669,7 @@ def calibrate_sensor(led_feedback=True, button_control=True):
     log_size = 100
     limit = 0.2
     if led_feedback:
-        [led_speaker] = pick_speakers(23)  # s get object for center speaker LED
+        [led_speaker] = pick_speakers(23)  # get object for center speaker LED
         write(tag='bitmask', value=led_speaker.digital_channel,
               processors=led_speaker.digital_proc)  # illuminate LED
     if button_control:
