@@ -289,7 +289,7 @@ def shift_setup(delta_azi, delta_ele):
     print(f"shifting the loudspeaker array by {delta_azi} in azimuth and {delta_ele} in elevation")
 
 
-def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan_tag='chan', play_tag='playbuflen'):
+def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan_tag='chan', n_samples_tag='playbuflen'):
     """
     Load a signal into the processor buffer and set the output channel to match the speaker.
     The processor is chosen automatically depending on the speaker.
@@ -305,18 +305,26 @@ def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan
     signal = slab.Sound(signal)
     speaker = pick_speakers(speaker)[0]
     if equalize:
-        logging.debug('Applying calibration.')  # apply level and frequency calibration
+        logging.info('Applying calibration.')  # apply level and frequency calibration
         to_play = apply_equalization(signal, speaker)
     else:
         to_play = signal
-    PROCESSORS.write(tag=play_tag, value=to_play.n_samples, processors=['RX81', 'RX82'])
+    PROCESSORS.write(tag=n_samples_tag, value=to_play.n_samples, processors=['RX81', 'RX82'])
     PROCESSORS.write(tag=chan_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
     PROCESSORS.write(tag=data_tag, value=to_play.data, processors=speaker.analog_proc)
     other_procs = set([s.analog_proc for s in SPEAKERS])
     other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
     PROCESSORS.write(tag=chan_tag, value=99, processors=other_procs)
 
+
 def set_speaker(speaker):
+    """
+    Set the analog channel on the processor corresponding to the selected speaker
+    Args:
+        speaker: the speaker to be selected
+    Returns:
+        None
+    """
     speaker = pick_speakers(speaker)[0]
     PROCESSORS.write(tag='chan', value=speaker.analog_channel, processors=speaker.analog_proc)
     other_procs = set([s.analog_proc for s in SPEAKERS])
