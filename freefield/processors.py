@@ -1,4 +1,5 @@
 from pathlib import Path
+import slab
 import numpy as np
 from freefield import DIR
 import os.path
@@ -97,6 +98,11 @@ class Processors(object):
         for proc in processors:
             if isinstance(value, (list, np.ndarray)):  # TODO: fix this
                 value = np.array(value)  # convert to array
+            elif isinstance(value, slab.Sound):
+                value = value.data
+            elif isinstance(value, slab.Binaural):
+                logging.warning('Only left channel will be used from a binaural sound!')
+                value = value.data[:, 0]
                 if value.ndim > 1:
                     value = value.flatten()
                 flag = self.processors[proc]._oleobj_.InvokeTypes(
