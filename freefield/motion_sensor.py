@@ -121,7 +121,7 @@ class Sensor():
             # disconnect
             libmetawear.mbl_mw_debug_disconnect(self.device.device.board)
             # while not self.device.device.is_connected:
-            time.sleep(0.2)
+            time.sleep(0.5)
             self.device.device.disconnect()
             self.device = None
             logging.info('Motion sensor disconnected')
