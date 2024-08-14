@@ -220,6 +220,20 @@ def wait_to_finish_playing(proc="all", tag="playback"):
         time.sleep(0.01)
     logging.debug('Done waiting.')
 
+def read_button(proc="RP2", tag="response"):
+    """
+    Busy wait until the response button was pressed. Repeatedly read a tag from a processor and do a busy wait while
+        0 is returned.
+
+    Args:
+        proc (str): Processor from which the tag is read.
+        tag (str): Tag which is read.
+
+    """
+    while not PROCESSORS.read(tag=tag, proc=proc):
+
+        time.sleep(0.1)  # wait until button is pressed
+
 
 def wait_for_button(proc="RP2", tag="response"):
     """
@@ -699,9 +713,10 @@ def calibrate_sensor(led_feedback=True, button_control=True):
                 break
     if led_feedback:
         write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
-    SENSOR.pose_offset = np.around(np.mean(log[-int(log_size / 2):].astype('float16'), axis=0), decimals=2)
+    pose_offset = np.around(np.mean(log[-int(log_size / 2):].astype('float16'), axis=0), decimals=2)
+    SENSOR.pose_offset = pose_offset
     logging.debug('Sensor calibration complete.')
-
+    return pose_offset
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):
     """
