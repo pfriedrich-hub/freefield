@@ -114,14 +114,14 @@ class Sensor():
         Disconnect the motion sensor.
         """
         if self.device:
-            libmetawear.mbl_mw_sensor_fusion_stop(self.device.device.board);
+            libmetawear.mbl_mw_sensor_fusion_stop(self.device.device.board)
             # unsubscribe to signal
             signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(self.device.device.board, SensorFusionData.EULER_ANGLE);
             libmetawear.mbl_mw_datasignal_unsubscribe(signal)
             # disconnect
             libmetawear.mbl_mw_debug_disconnect(self.device.device.board)
-            while not self.device.device.is_connected:
-                time.sleep(0.1)
+            # while not self.device.device.is_connected:
+            time.sleep(0.2)
             self.device.device.disconnect()
             self.device = None
             logging.info('Motion sensor disconnected')

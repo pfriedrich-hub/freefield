@@ -155,6 +155,11 @@ def write(tag, value, processors):
         data = numpy.random.randn(1000)
         write('data', data, "RX81") # write data array to the tag 'data' on the RX81
     """
+    if isinstance(value, slab.Sound):
+        value = value.data
+    elif isinstance(value, slab.Binaural):
+        logging.info('From a binaural sound, the left channel will be written to the buffer.')
+        value = value.data[:, 0]
     PROCESSORS.write(tag, value, processors)
 
 
