@@ -96,7 +96,7 @@ class Sensor():
         pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
         if print_pose:
             if all(pose):
-                logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
+                logging.debug('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
             else:
                 logging.warning("Could not detect head pose")
         if calibrate is True:
