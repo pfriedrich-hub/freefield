@@ -102,10 +102,10 @@ class Processors(object):
                 flag = self.processors[proc]._oleobj_.InvokeTypes(
                     15, 0x0, 1, (3, 0), ((8, 0), (3, 0), (0x2005, 0)),
                     tag, 0, value)
-                logging.info(f'Set {tag} on {proc}.')
+                logging.debug(f'Set {tag} on {proc}.')
             else:
                 flag = self.processors[proc].SetTagVal(tag, value)
-                logging.info(f'Set {tag} to {value} on {proc}.')
+                logging.debug(f'Set {tag} to {value} on {proc}.')
             if flag == 0:
                 logging.warning(f'Unable to set tag {tag} on {proc}')
         return flag
