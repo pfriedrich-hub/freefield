@@ -709,6 +709,8 @@ def calibrate_sensor(led_feedback=True, button_control=True):
     log = np.zeros(2)
     while True:  # wait in loop for sensor to stabilize
         pose = SENSOR.get_pose(calibrate=False)
+        if not pose:  # break from the loop if sensor disconnects
+            return None
         log = np.vstack((log, pose))
         # check if orientation is stable for at least 30 data points
         if len(log) > log_size:
