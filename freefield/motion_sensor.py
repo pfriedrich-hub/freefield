@@ -32,17 +32,44 @@ class Sensor():
         devices = {}
         BleScanner.set_handler(handler)
         BleScanner.start()
-        logging.debug("Scanning for motion sensor")
-        t_start = time.time()
-        while not 'MetaWear' in devices.values():
-            time.sleep(0.1)  # scanning for devices time
-            if time.time() > t_start + 20:
-                logging.warning("Could not find motion sensor")
-                return None
+        logging.info("Scanning for motion sensor")
+
+        # alternative: make a choice if multiple sensors are found
+        while True:
+            t_start = time.time()
+            while not time.time() > t_start + 2:
+                time.sleep(0.1)  # scanning for devices time
+            if 'MetaWear' in devices.values():
+                mac_list = []
+                for idx, device in enumerate(devices.values()):
+                    if device == 'MetaWear':
+                        mac_list.append(list(devices.keys())[idx])
+                if len(mac_list) > 1:
+                    logging.warning('More than one sensor detected.\nChoose a sensor:')
+                    for idx, mac_id in enumerate(mac_list):
+                        print(f'{idx} {mac_id}\n')
+                    address = mac_list[int(input())]
+                else:
+                    address = mac_list[0]
+                break
+            else:
+                logging.warning("Could not find motion sensor. Retry? (y/n)")
+                if input() == 'y':
+                    continue
+                else:
+                    return None
+
+        # alternative: search for max 20 seconds and continue if any sensor is found
+        # while not 'MetaWear' in devices.values():
+        #     time.sleep(0.1)  # scanning for devices time
+        #     if time.time() > t_start + 20:
+        #         logging.warning("Could not find motion sensor")
+        #         return None
+        # for idx, device in enumerate(devices.values()):
+        #     if device == 'MetaWear':
+        #         address = list(devices.keys())[idx]
+
         BleScanner.stop()
-        for idx, device in enumerate(devices.values()):
-            if device == 'MetaWear':
-                address = list(devices.keys())[idx]
         logging.debug("Connecting to %s" % (address))
         device = MetaWear(address)
         while not device.is_connected:
@@ -54,7 +81,7 @@ class Sensor():
         logging.debug("Configuring motion sensor")
         # setup ble
         libmetawear.mbl_mw_settings_set_connection_parameters(sensor.device.board, 7.5, 7.5, 0, 6000)
-        # setup quaternion
+        # setup quaternionA
         libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.NDOF)
         libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.IMU_PLUS)
         libmetawear.mbl_mw_sensor_fusion_set_acc_range(sensor.device.board, SensorFusionAccRange._8G)
