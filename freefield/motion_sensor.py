@@ -32,10 +32,9 @@ class Sensor():
         devices = {}
         BleScanner.set_handler(handler)
         BleScanner.start()
-        logging.info("Scanning for motion sensor")
-
-        # alternative: make a choice if multiple sensors are found
+        # make a choice if multiple sensors are found
         while True:
+            logging.info("Scanning for motion sensor")
             t_start = time.time()
             while not time.time() > t_start + 2:
                 time.sleep(0.1)  # scanning for devices time
@@ -53,8 +52,8 @@ class Sensor():
                     address = mac_list[0]
                 break
             else:
-                logging.warning("Could not find motion sensor. Retry? (y/n)")
-                if input() == 'y':
+                logging.warning("Could not find motion sensor. Retry? (Y/n)")
+                if input().upper() == 'Y':
                     continue
                 else:
                     return None
@@ -117,6 +116,8 @@ class Sensor():
                     pose[0] -= 360
                 pose_log[n] = pose
                 n += 1
+            if not self.device.device.is_connected:
+                logging.warning('Sensor connection lost!')
         d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
         mdev = numpy.median(d)  # median deviation
         s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
