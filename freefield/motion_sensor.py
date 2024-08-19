@@ -117,7 +117,11 @@ class Sensor():
                 pose_log[n] = pose
                 n += 1
             if not self.device.device.is_connected:
-                logging.warning('Sensor connection lost!')
+                logging.warning('Sensor connection lost! Reconnect? (Y/n)')
+                if input().upper() == 'Y':
+                    # self.halt()  # probably unnecessary
+                    self.connect()
+                return None  # break from the loop and return pose=None
         d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
         mdev = numpy.median(d)  # median deviation
         s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
