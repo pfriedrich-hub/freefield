@@ -915,3 +915,8 @@ def set_logger(level, report=True):
             logging.info('Logger set to %s.' %level.upper())
     except AttributeError:
         raise AttributeError("Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'")
+
+def get_speaker_table():
+    table_file = DIR / 'data' / 'tables' / Path(f'speakertable_{SETUP}.txt')
+    table = np.loadtxt(table_file, skiprows=1, delimiter=",", dtype=str)
+    return table
