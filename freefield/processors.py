@@ -161,10 +161,8 @@ class Processors(object):
             connected = rp.ConnectRP2(connection, index)
         elif model.upper() == 'RX8':
             connected = rp.ConnectRX8(connection, index)
-        elif model.upper() == 'RM1':
-            connected = rp.ConnectRX8(connection, index)
         elif model.upper() == 'RX6':
-            connected = rp.ConnectRX8(connection, index)
+            connected = rp.ConnectRX6(connection, index)
         elif model.upper() == 'RM1':
             connected = rp.ConnectRM1(connection, index)
         if not connected:
