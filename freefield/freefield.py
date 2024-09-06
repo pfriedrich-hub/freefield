@@ -331,11 +331,12 @@ def set_signal_headphones(signal, equalize=True, data_tags=['data_l', 'data_r'],
             chan_tags (List): A list containing the names of the tags setting the output channel numbers
             play_tag ('string'): Name of the tag connected to the playback switch
     """
-    signal = slab.Sound(signal)
+    if signal.n_channels == 1:
+        signal = slab.Binaural(signal)
     speakers = SPEAKERS
     to_play = copy.deepcopy(signal)
     PROCESSORS.write(tag=n_samples_tag, value=signal.n_samples, processors='RP2')
-    for i, speaker, ch_tag, data_tag in enumerate(zip(speakers, chan_tags, data_tags)):
+    for i, (speaker, ch_tag, data_tag) in enumerate(zip(speakers, chan_tags, data_tags)):
         if equalize:
             logging.info('Applying calibration.')  # apply level and frequency calibration
             to_play.channel(i).data = apply_equalization(signal.channel(i), speaker).data
@@ -359,12 +360,12 @@ def set_speaker(speaker):
     other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
-def set_speaker(speaker, equalize=True):
-    speaker = pick_speakers(speaker)[0]
-    PROCESSORS.write(tag='chan', value=speaker.analog_channel, processors=speaker.analog_proc)
-    other_procs = set([s.analog_proc for s in SPEAKERS])
-    other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
-    PROCESSORS.write(tag='chan', value=99, processors=other_procs)
+# def set_speaker(speaker, equalize=True):
+#     speaker = pick_speakers(speaker)[0]
+#     PROCESSORS.write(tag='chan', value=speaker.analog_channel, processors=speaker.analog_proc)
+#     other_procs = set([s.analog_proc for s in SPEAKERS])
+#     other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
+#     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
 def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
                     recording_samplerate=48828):
@@ -416,6 +417,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
             rec.level = sound.level
     return rec
 
+
 def play_and_record_headphones(sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
                     recording_samplerate=48828):
     """
@@ -437,9 +439,8 @@ def play_and_record_headphones(sound, compensate_delay=True, compensate_attenuat
     """
     if PROCESSORS.mode != "bi_play_rec":  # read data for left and right ear from buffer
         raise ValueError("Setup must be initialized in mode 'bi_play_rec'.")
-    write(tag="playbuflen", value=sound.n_samples, processors="RP2")
     if compensate_delay:
-        n_delay = get_recording_delay(play_from="RP2", rec_from="RP2")
+        n_delay = get_recording_delay(play_from="RP2", rec_from="RP2", sample_rate=recording_samplerate)
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
@@ -524,7 +525,7 @@ def apply_equalization(signal, speaker, level=True, frequency=True):
         equalized_signal = speaker.filter.apply(equalized_signal)
     return equalized_signal
 
-def equalize_headphones(bandwidth=1 / 10, threshold=.3, low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
+def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=200, high_cutoff=18000, alpha=1.0, file_name=None):
     """
        Equalize the headphones in two steps. First: equalize over all
        level differences by a constant for each speaker. Second: remove spectral
@@ -550,7 +551,7 @@ def equalize_headphones(bandwidth=1 / 10, threshold=.3, low_cutoff=200, high_cut
     reference_speaker = pick_speakers(0)[0]
     temp_recs = []
     for i in range(20):
-        rec = play_and_record(reference_speaker, sound, equalize=False)
+        rec = play_and_record_headphones(reference_speaker, sound, equalize=False)
         temp_recs.append(rec.data)
     target = slab.Sound(data=np.mean(temp_recs, axis=0))
     # # use original signal as reference - WARNING could result in unrealistic equalization filters,
