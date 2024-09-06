@@ -1,3 +1,4 @@
+import copy
 import time
 from pathlib import Path
 import datetime
@@ -26,7 +27,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     the setup runs until `halt()` is called. Initialzing device which are already running will flush them.
 
     Arguments:
-        setup (str): which setup to load, can be 'dome' or 'arc'
+        setup (str): which setup to load, can be 'dome', 'arc' or 'headphones'
         default (str | None): initialize the setup using one of the default settings which are:
             'play_rec': play sounds using two RX8s and record them with a RP2
             'play_birec': same as 'play_rec' but record from two microphone channels
@@ -317,6 +318,33 @@ def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan
     PROCESSORS.write(tag=chan_tag, value=99, processors=other_procs)
 
 
+def set_signal_headphones(signal, equalize=True, data_tags=['data_l', 'data_r'], chan_tags=['chan_l', 'chan_r'],
+                          n_samples_tag='playbuflen'):
+    """
+    Load a signal into the processor buffer and set the output channels to headphones.
+
+        Args:
+            signal (array-like): signal to load to the buffer, must be one-dimensional
+            speaker (Speaker, int) : speaker to play the signal from, can be index number or [azimuth, elevation]
+            equalize (bool): if True (=default) apply loudspeaker equalization
+            data_tags (List): A list containing the names of the tags feeding into the signal buffers
+            chan_tags (List): A list containing the names of the tags setting the output channel numbers
+            play_tag ('string'): Name of the tag connected to the playback switch
+    """
+    signal = slab.Sound(signal)
+    speakers = SPEAKERS
+    to_play = copy.deepcopy(signal)
+    PROCESSORS.write(tag=n_samples_tag, value=signal.n_samples, processors='RP2')
+    for i, speaker, ch_tag, data_tag in enumerate(zip(speakers, chan_tags, data_tags)):
+        if equalize:
+            logging.info('Applying calibration.')  # apply level and frequency calibration
+            to_play.channel(i).data = apply_equalization(signal.channel(i), speaker).data
+        else:
+            to_play = signal
+        PROCESSORS.write(tag=ch_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
+        PROCESSORS.write(tag=data_tag, value=to_play.channel(i).data, processors=speaker.analog_proc)
+
+
 def set_speaker(speaker):
     """
     Set the analog channel on the processor corresponding to the selected speaker
@@ -339,7 +367,7 @@ def set_speaker(speaker, equalize=True):
     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
 def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
-                    recording_samplerate=97656):
+                    recording_samplerate=48828):
     """
     Play the signal from a speaker and return the recording. Delay compensation
     means making the buffer of the recording processor n samples longer and then
@@ -388,6 +416,51 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
             rec.level = sound.level
     return rec
 
+def play_and_record_headphones(sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
+                    recording_samplerate=48828):
+    """
+    Play the signal from a speaker and return the recording. Delay compensation
+    means making the buffer of the recording processor n samples longer and then
+    throwing the first n samples away when returning the recording so sig and
+    rec still have the same length. For this to work, the circuits rec_buf.rcx
+    and play_buf.rcx have to be initialized on RP2 and RX8s and the mic must
+    be plugged in.
+    Parameters:
+        speaker: integer between 1 and 48, index number of the speaker
+        sound: instance of slab.Sound, signal that is played from the speaker
+        compensate_delay: bool, compensate the delay between play and record
+        compensate_attenuation:
+        equalize:
+        recording_samplerate: samplerate of the recording
+    Returns:
+        rec: 2-D array, recorded signal
+    """
+    if PROCESSORS.mode != "bi_play_rec":  # read data for left and right ear from buffer
+        raise ValueError("Setup must be initialized in mode 'bi_play_rec'.")
+    write(tag="playbuflen", value=sound.n_samples, processors="RP2")
+    if compensate_delay:
+        n_delay = get_recording_delay(play_from="RP2", rec_from="RP2")
+        n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
+    else:
+        n_delay = 0
+    rec_n_samples = int(sound.duration * recording_samplerate)
+    write(tag="recbuflen", value=rec_n_samples + n_delay, processors="RP2")
+    set_signal_headphones(sound, equalize)
+    play()
+    wait_to_finish_playing()
+    rec_l = read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
+    rec_r = read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
+    rec = slab.Binaural([rec_l, rec_r], samplerate=recording_samplerate)
+    if sound.samplerate != recording_samplerate:
+        rec = rec.resample(sound.samplerate)
+    if compensate_attenuation:
+        if isinstance(rec, slab.Binaural):
+            iid = rec.left.level - rec.right.level
+            rec.level = sound.level
+            rec.left.level += iid
+        else:
+            rec.level = sound.level
+    return rec
 
 def get_recording_delay(distance=1.4, sample_rate=48828, play_from=None, rec_from=None):
     """
@@ -451,6 +524,77 @@ def apply_equalization(signal, speaker, level=True, frequency=True):
         equalized_signal = speaker.filter.apply(equalized_signal)
     return equalized_signal
 
+def equalize_headphones(bandwidth=1 / 10, threshold=.3, low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
+    """
+       Equalize the headphones in two steps. First: equalize over all
+       level differences by a constant for each speaker. Second: remove spectral
+       difference by inverse filtering. For more details on how the
+       inverse filters are computed see the documentation of slab.Filter.equalizing_filterbank
+
+       Args:
+           bandwidth (float): Width of the filters, used to divide the signal into subbands, in octaves. A small
+               bandwidth results in a fine tuned transfer function which is useful for equalizing small notches.
+           threshold (float): Threshold for level equalization. Correct level only for speakers that deviate more
+               than <threshold> dB from reference speaker
+           low_cutoff (int | float): The lower limit of frequency equalization range in Hz.
+           high_cutoff (int | float): The upper limit of frequency equalization range in Hz.
+           alpha (float): Filter regularization parameter. Values below 1.0 reduce the filter's effect, values above
+               amplify it. WARNING: large filter gains may result in temporal distortions of the sound
+           file_name (string): Name of the file to store equalization parameters.
+
+       """
+    if not PROCESSORS.mode == "bi_play_rec":
+        PROCESSORS.initialize_default(mode="bi_play_rec")
+    sound = slab.Sound.chirp(duration=0.1, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
+    speakers = SPEAKERS
+    reference_speaker = pick_speakers(0)[0]
+    temp_recs = []
+    for i in range(20):
+        rec = play_and_record(reference_speaker, sound, equalize=False)
+        temp_recs.append(rec.data)
+    target = slab.Sound(data=np.mean(temp_recs, axis=0))
+    # # use original signal as reference - WARNING could result in unrealistic equalization filters,
+    #  can be used for HRTF measurement calibration to get really flat chirp spectra
+    baseline_amp = target.level
+    target = deepcopy(sound)
+    target.level = baseline_amp
+    recordings = []
+    for speaker in speakers:
+        temp_recs = []
+        for i in range(20):
+            rec = play_and_record_headphones(sound, equalize=False)
+            # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
+            temp_recs.append(rec.data)
+        recordings.append(slab.Sound(data=np.mean(temp_recs, axis=0)))
+        # recordings.append(numpy.mean(temp_recs, axis=0))
+    recordings = slab.Sound(recordings)
+    recordings.data[:, np.logical_and(recordings.level > target.level - threshold,
+                                         recordings.level < target.level + threshold)] = target.data
+    equalization_levels = target.level - recordings.level
+    recordings = []
+    for speaker, level in zip(speakers, equalization_levels):
+        attenuated = deepcopy(sound)
+        attenuated.level += level
+        temp_recs = []
+        for i in range(20):
+            rec = play_and_record_headphones(attenuated, equalize=False)
+            # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
+            temp_recs.append(rec.data)
+        recordings.append(slab.Sound(data=np.mean(temp_recs, axis=0)))
+    recordings = slab.Sound(recordings)
+    filter_bank = slab.Filter.equalizing_filterbank(target, recordings, low_cutoff=low_cutoff,
+                                                    high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
+    equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
+                    for i in range(len(speakers))}
+    if file_name is None:  # use the default filename and rename teh existing file
+        file_name = DIR / 'data' / f'calibration_{SETUP}.pkl'
+    else:
+        file_name = Path(file_name)
+    if file_name.exists():  # move the old calibration to the log folder
+        date = datetime.datetime.now().strftime("_%Y-%m-%d-%H-%M-%S")
+        file_name.rename(file_name.parent / (file_name.stem + date + file_name.suffix))
+    with open(file_name, 'wb') as f:  # save the newly recorded calibration
+        pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 
 def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=.3,
                       low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
