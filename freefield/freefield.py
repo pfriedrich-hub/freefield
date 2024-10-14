@@ -57,7 +57,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     if device is not None:
         PROCESSORS.initialize(device, zbus, connection)
     elif default is not None:
-        PROCESSORS.initialize_default(default)
+        PROCESSORS.initialize_default(setup, default)
     if camera is not None:
         CAMERAS = cameras.initialize('flir')
     if sensor_tracking:
@@ -81,6 +81,7 @@ class Speaker:
     digital_proc: str  # the processor to whose digital I/O the speaker's LED is attached
     azimuth: float  # the azimuth angle of the speaker
     elevation: float  # the azimuth angle of the speaker
+    distance: float # the distance of the speaker in m
     digital_channel: int  # the int value of the bitmask for the digital channel to which the speakers LED is attached
     level: float = None  # the constant for level equalization
     filter: slab.Filter = None  # filter for equalizing the filters transfer function
@@ -105,8 +106,9 @@ def read_speaker_table():
     table = np.loadtxt(table_file, skiprows=1, delimiter=",", dtype=str)
     for row in table:
         speakers.append(Speaker(index=int(row[0]), analog_channel=int(row[1]), analog_proc=row[2],
-                                azimuth=float(row[3]), digital_channel=int(row[5]) if row[5] else None,
-                                elevation=float(row[4]), digital_proc=row[6] if row[6] else None))
+                                azimuth=float(row[3]), elevation=float(row[4]), distance=float(row[5]),
+                                digital_channel=float(row[6]) if row[6] else None,
+                                digital_proc=row[7] if row[7] else None))
     return speakers
 
 
