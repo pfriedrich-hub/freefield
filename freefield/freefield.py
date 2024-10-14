@@ -271,7 +271,7 @@ def all_leds():
     return [s for s in SPEAKERS if s.digital_channel is not None]
 
 
-def shift_setup(delta_azi, delta_ele):
+def shift_setup(delta_azi, delta_ele, delta_dist):
     """
     Shift the setup (relative to the lister) by adding some delta value
     in azimuth and elevation. This can be used when chaning the position of
@@ -282,12 +282,14 @@ def shift_setup(delta_azi, delta_ele):
     Args:
         delta_azi (float): azimuth by which the setup is shifted, positive value means shifting right
         delta_ele (float): elevation by which the setup is shifted, positive value means shifting up
+        delta_dist (float): distance by which the setup is shifted, positive value means shifting away
     """
     # TODO: first convert to cartesian coordinates then move
     global SPEAKERS
     for speaker in SPEAKERS:
         speaker.azimuth += delta_azi  # azimuth
         speaker.elevation += delta_ele  # elevation
+        speaker.distance += delta_dist # distance
     print(f"shifting the loudspeaker array by {delta_azi} in azimuth and {delta_ele} in elevation")
 
 
@@ -352,16 +354,23 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     Returns:
         rec: 1-D array, recorded signal
     """
-    write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
+    if SETUP == "cathedral":
+        write(tag="playbuflen", value=sound.n_samples, processors=["RX81"])
+    else:
+        write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
     if compensate_delay:
-        n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
+        n_delay = get_recording_delay(distance=speaker.distance, play_from="RX8", rec_from="RP2")
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
     rec_n_samples = int(sound.duration * recording_samplerate)
     write(tag="playbuflen", value=rec_n_samples + n_delay, processors="RP2")
     set_signal_and_speaker(sound, speaker, equalize)
-    play()
+    if SETUP == "cathedral":
+        play(kind=1, proc="RP2")
+        play(kind=1, proc="RX81")
+    else:
+        play()
     wait_to_finish_playing()
     if PROCESSORS.mode == "play_rec":  # read the data from buffer and skip the first n_delay samples
         rec = read(tag='data', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
@@ -384,14 +393,15 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     return rec
 
 
-def get_recording_delay(distance=1.4, sample_rate=48828, play_from=None, rec_from=None):
+def get_recording_delay(distance, sample_rate=48828, play_from=None, rec_from=None):
     """
         Calculate the delay it takes for played sound to be recorded. Depends
         on the distance of the microphone from the speaker and on the device
         digital-to-analog and analog-to-digital conversion delays.
 
         Args:
-            distance (float): distance between listener and speaker array in meters
+            distance (float): distance between listener and speaker array in meters, usually provided by the distance
+                attribute of the Speaker object
             sample_rate (int): sample rate under which the system is running
             play_from (str): processor used for digital to analog conversion
             rec_from (str): processor used for analog to digital conversion
