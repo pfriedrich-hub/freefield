@@ -9,7 +9,7 @@ try:
     # from mbientlab.metawear import *
 except  ModuleNotFoundError:
     mbientlab = None
-    logging.warning('Could not import pywin32 - working with TDT device is disabled')
+    logging.warning('Could not import mbientlab - working with motion sensor is disabled')
 
 class State:
     def __init__(self, device):
