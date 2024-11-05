@@ -818,14 +818,15 @@ def get_head_response(method='sensor', proc="RP2", tag="response"):
         print('Response| azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
     return pose
 
-def calibrate_sensor(led_feedback=True, button_control=True):
+def calibrate_sensor(led_feedback=True, button_control='processor'):
     """
     Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
     towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
     The average is then used as an offset for pose estimation.
         Args:
         led_feedback: whether to turn on the central led to assist gaze control during calibration
-        button_control: whether to initialize calibration by button response
+        button_control (str): whether to initialize calibration by button response; may be 'processor' if a button is
+         connected to the RP2 or 'keyboard', if usb keyboard input is to be used.
     Returns:
         bool: True if difference between pose and fix is smaller than var, False otherwise
     """
@@ -835,9 +836,11 @@ def calibrate_sensor(led_feedback=True, button_control=True):
         [led_speaker] = pick_speakers(23)  # get object for center speaker LED
         write(tag='bitmask', value=led_speaker.digital_channel,
               processors=led_speaker.digital_proc)  # illuminate LED
-    if button_control:
+    if button_control == 'processor':
         logging.debug('rest at center speaker and press button to start calibration...')
         wait_for_button()  # start calibration after button press
+    elif button_control == 'keyboard':
+        input('Rest at center speaker and press button to start calibration...')
     logging.debug('calibrating')
     log = np.zeros(2)
     while True:  # wait in loop for sensor to stabilize
