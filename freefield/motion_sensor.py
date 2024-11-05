@@ -3,8 +3,10 @@ import time
 import numpy
 import logging
 try:
-    from mbientlab.warble import *
-    from mbientlab.metawear import *
+    import mbientlab.warble
+    import mbientlab.metawear
+    # from mbientlab.warble import *
+    # from mbientlab.metawear import *
 except  ModuleNotFoundError:
     mbientlab = None
     logging.warning('Could not import pywin32 - working with TDT device is disabled')
