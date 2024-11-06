@@ -770,7 +770,7 @@ def get_head_pose(method='sensor', convention='psychoacoustics'):
         if not SENSOR.device:
             raise ValueError("No sensor connected!")
         else:
-            head_pose = SENSOR.get_pose(convention)
+            head_pose = SENSOR.get_pose(convention=convention)
     else:
         raise ValueError("Method must be 'camera' or 'sensor'")
     return head_pose
