@@ -67,7 +67,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     try:
         load_equalization()  # load the default equalization
     except FileNotFoundError:
-        print("Could not load loudspeaker equalization! Use 'load_equalization' or 'equalize_speakers' \n"
+        logging.warning("Could not load loudspeaker equalization! Use 'load_equalization' or 'equalize_speakers' \n"
               "to load an existing equalization or measure and compute a new one.")
 
 
