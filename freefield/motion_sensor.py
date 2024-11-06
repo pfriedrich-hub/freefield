@@ -99,7 +99,7 @@ class Sensor():
         self.device = sensor
         logging.info('Motion sensor connected and running')
 
-    def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False, convention='physics'):
+    def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False, convention='freefield'):
         """
         Read orientation in polar angle from the motion sensor.
         Args:
