@@ -748,12 +748,14 @@ def spectral_range(signal, bandwidth=1 / 5, low_cutoff=50, high_cutoff=20000, th
     return difference
 
 
-def get_head_pose(method='sensor'):
+def get_head_pose(method='sensor', convention='psychoacoustics'):
     """
     Wrapper for the get headpose methods of the camera and sensor classes
 
     Args:
         method (string): Method use for headpose estimation. Can be "camera" or "sensor"
+        convention (string): Convention of the spherical coordinate system. Can be 'physics' or 'psychoacoustics'.
+
     Returns:
         head_pose (numpy.ndarray): Array containing spheric coordinates of
         the current head orientation: (Azimuth, Elevation)
@@ -768,7 +770,7 @@ def get_head_pose(method='sensor'):
         if not SENSOR.device:
             raise ValueError("No sensor connected!")
         else:
-            head_pose = SENSOR.get_pose()
+            head_pose = SENSOR.get_pose(convention)
     else:
         raise ValueError("Method must be 'camera' or 'sensor'")
     return head_pose

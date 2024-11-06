@@ -99,7 +99,7 @@ class Sensor():
         self.device = sensor
         logging.info('Motion sensor connected and running')
 
-    def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False, convention='freefield'):
+    def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False, convention='psychoacoustics'):
         """
         Read orientation in polar angle from the motion sensor.
         Args:
@@ -116,8 +116,12 @@ class Sensor():
             pose = numpy.array((self.device.pose.yaw, self.device.pose.roll))
             if not any(numpy.isnan(pose)) and all(-180 <= _pose <= 360 for _pose in pose)\
                     and not any(-1e-3 <= _pose <= 1e-3 for _pose in pose):
-                if pose[0] > 180:  # todo fix this
-                    pose[0] -= 360
+                if convention == 'psychoacoustics':
+                    if pose[0] > 180:
+                        pose[0] -= 360
+                elif convention == 'physics':
+                        pose[0] = 360 - pose[0]
+                else: raise ValueError('Convention must be "psychoacoustics" or "physics"!')
                 pose_log[n] = pose
                 n += 1
             if not self.device.device.is_connected:
@@ -130,8 +134,6 @@ class Sensor():
         mdev = numpy.median(d)  # median deviation
         s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
         pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
-        if convention == 'physics':
-            pose[0] *= -1
         if print_pose:
             if all(pose):
                 logging.debug('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
