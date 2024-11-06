@@ -133,7 +133,7 @@ class Processors(object):
             if not 1 <= kind <= 10:
                 raise ValueError("software triggers must be between 1 and 10!")
             self.processors[proc].SoftTrg(kind)
-            logging.info(f'SoftTrig {kind} sent to {proc}.')
+            logging.debug(f'SoftTrig {kind} sent to {proc}.')
         elif 'zbus' in kind.lower():
             if self._zbus is None:
                 raise ValueError('ZBus needs to be initialized first!')

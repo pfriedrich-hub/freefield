@@ -52,8 +52,8 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     global PROCESSORS, CAMERAS, SETUP, SPEAKERS, SENSOR
     # initialize device
     SETUP = setup
-    if bool(device) == bool(default):
-        raise ValueError("You have to specify a device OR a default_mode")
+    # if bool(device) == bool(default):
+    #     raise ValueError("You have to specify a device OR a default_mode")
     if device is not None:
         PROCESSORS.initialize(device, zbus, connection)
     elif default is not None:
