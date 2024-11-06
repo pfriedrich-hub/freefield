@@ -44,7 +44,7 @@ class Sensor():
                     if device == 'MetaWear':
                         mac_list.append(list(devices.keys())[idx])
                 if len(mac_list) > 1:
-                    logging.warning('More than one sensor detected.\nChoose a sensor:')
+                    logging.warning('More than one motion sensor detected.\nChoose a sensor:')
                     for idx, mac_id in enumerate(mac_list):
                         print(f'{idx} {mac_id}\n')
                     address = mac_list[int(input())]
@@ -69,7 +69,7 @@ class Sensor():
         #         address = list(devices.keys())[idx]
 
         BleScanner.stop()
-        logging.debug("Connecting to %s" % (address))
+        logging.info("Connecting to motion sensor (MAC: %s)" % (address))
         device = MetaWear(address)
         while not device.is_connected:
             try:
