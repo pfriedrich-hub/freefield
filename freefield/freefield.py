@@ -318,25 +318,32 @@ def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan
     PROCESSORS.write(tag=chan_tag, value=99, processors=other_procs)
 
 
-def set_signal_headphones(signal, equalize=True, data_tags=['data_l', 'data_r'], chan_tags=['chan_l', 'chan_r'],
+def set_signal_headphones(signal, speaker, equalize=True, data_tags=['data_l', 'data_r'], chan_tags=['chan_l', 'chan_r'],
                           n_samples_tag='playbuflen'):
     """
     Load a signal into the processor buffer and set the output channels to headphones.
 
         Args:
+            speaker (string): A string specifying the headphone speakers to play from.
+                Can be 'left', 'right', or 'both'.
             signal (array-like): signal to load to the buffer, must be one-dimensional
-            speaker (Speaker, int) : speaker to play the signal from, can be index number or [azimuth, elevation]
             equalize (bool): if True (=default) apply loudspeaker equalization
             data_tags (List): A list containing the names of the tags feeding into the signal buffers
             chan_tags (List): A list containing the names of the tags setting the output channel numbers
             play_tag ('string'): Name of the tag connected to the playback switch
     """
-    if signal.n_channels == 1:
-        signal = slab.Binaural(signal)
     speakers = SPEAKERS
+    if speaker == 'both':
+        idx = slice(0, 2)
+        if signal.n_channels == 1:
+            signal = slab.Binaural(signal)
+    if speaker == 'left':
+        idx = slice(0, 1)
+    if speaker == 'right':
+        idx = slice(1, 2)
     to_play = copy.deepcopy(signal)
     PROCESSORS.write(tag=n_samples_tag, value=signal.n_samples, processors='RP2')
-    for i, (speaker, ch_tag, data_tag) in enumerate(zip(speakers, chan_tags, data_tags)):
+    for i, (speaker, ch_tag, data_tag) in enumerate(zip(speaker[idx], chan_tags[idx], data_tags[idx])):
         if equalize:
             logging.info('Applying calibration.')  # apply level and frequency calibration
             to_play.channel(i).data = apply_equalization(signal.channel(i), speaker).data
@@ -418,7 +425,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     return rec
 
 
-def play_and_record_headphones(sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
+def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
                     recording_samplerate=48828):
     """
     Play the signal from a speaker and return the recording. Delay compensation
@@ -428,7 +435,8 @@ def play_and_record_headphones(sound, compensate_delay=True, compensate_attenuat
     and play_buf.rcx have to be initialized on RP2 and RX8s and the mic must
     be plugged in.
     Parameters:
-        speaker: integer between 1 and 48, index number of the speaker
+        speaker (string): A string specifying the headphone speakers to play from.
+                Can be 'left', 'right', or 'both'.
         sound: instance of slab.Sound, signal that is played from the speaker
         compensate_delay: bool, compensate the delay between play and record
         compensate_attenuation:
@@ -446,12 +454,17 @@ def play_and_record_headphones(sound, compensate_delay=True, compensate_attenuat
         n_delay = 0
     rec_n_samples = int(sound.duration * recording_samplerate)
     write(tag="recbuflen", value=rec_n_samples + n_delay, processors="RP2")
-    set_signal_headphones(sound, equalize)
+    set_signal_headphones(signal=sound, speaker=speaker, equalize=equalize)
     play()
     wait_to_finish_playing()
-    rec_l = read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
-    rec_r = read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]
-    rec = slab.Binaural([rec_l, rec_r], samplerate=recording_samplerate)
+    if speaker == 'both':
+        rec = slab.Binaural([read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:],
+                             read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]],
+                            samplerate=recording_samplerate)
+    elif speaker == 'left':
+        rec = slab.Sound(read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:])
+    elif speaker == 'right':
+        rec = slab.Sound(read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:])
     if sound.samplerate != recording_samplerate:
         rec = rec.resample(sound.samplerate)
     if compensate_attenuation:
@@ -525,7 +538,7 @@ def apply_equalization(signal, speaker, level=True, frequency=True):
         equalized_signal = speaker.filter.apply(equalized_signal)
     return equalized_signal
 
-def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=200, high_cutoff=18000, alpha=1.0, file_name=None):
+def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
     """
        Equalize the headphones in two steps. First: equalize over all
        level differences by a constant for each speaker. Second: remove spectral
@@ -546,44 +559,39 @@ def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=200, high_cutof
        """
     if not PROCESSORS.mode == "bi_play_rec":
         PROCESSORS.initialize_default(mode="bi_play_rec")
-    sound = slab.Sound.chirp(duration=0.1, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
+    sound = slab.Binaural.chirp(duration=0.1, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
     speakers = SPEAKERS
-    reference_speaker = pick_speakers(0)[0]
-    temp_recs = []
+    # reference_speaker = 'left'
+    # don't do level calibration for now
+    # temp_recs = []
+    # for i in range(20):
+    #     rec = play_and_record_headphones(reference_speaker, sound, equalize=False)
+    #     temp_recs.append(rec.data)
+    # target = slab.Sound(data=np.mean(temp_recs, axis=0))
+    # # # use original signal as reference - WARNING could result in unrealistic equalization filters,
+    # #  can be used for HRTF measurement calibration to get really flat chirp spectra
+    # baseline_amp = target.level
+    # target = deepcopy(sound)
+    # target.level = baseline_amp
+    # temp_recs = []
+    # for i in range(20):
+    #     rec = play_and_record_headphones(speaker='both', sound=sound, equalize=False)
+    #     temp_recs.append(rec.data)
+    # rec = slab.Sound(data=np.mean(temp_recs, axis=0))
+    #     # recordings.append(numpy.mean(temp_recs, axis=0))
+    # rec.data[:, np.logical_and(rec.level > target.level - threshold,
+    #                                      rec.level < target.level + threshold)] = target.data
+    # equalization_levels = target.level - rec.level
+    equalization_levels = [0, 0]
+    recordings = []
+    attenuated = deepcopy(sound)
+    attenuated.level += equalization_levels
     for i in range(20):
-        rec = play_and_record_headphones(reference_speaker, sound, equalize=False)
-        temp_recs.append(rec.data)
-    target = slab.Sound(data=np.mean(temp_recs, axis=0))
-    # # use original signal as reference - WARNING could result in unrealistic equalization filters,
-    #  can be used for HRTF measurement calibration to get really flat chirp spectra
-    baseline_amp = target.level
-    target = deepcopy(sound)
-    target.level = baseline_amp
-    recordings = []
-    for speaker in speakers:
-        temp_recs = []
-        for i in range(20):
-            rec = play_and_record_headphones(sound, equalize=False)
-            # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
-            temp_recs.append(rec.data)
-        recordings.append(slab.Sound(data=np.mean(temp_recs, axis=0)))
-        # recordings.append(numpy.mean(temp_recs, axis=0))
-    recordings = slab.Sound(recordings)
-    recordings.data[:, np.logical_and(recordings.level > target.level - threshold,
-                                         recordings.level < target.level + threshold)] = target.data
-    equalization_levels = target.level - recordings.level
-    recordings = []
-    for speaker, level in zip(speakers, equalization_levels):
-        attenuated = deepcopy(sound)
-        attenuated.level += level
-        temp_recs = []
-        for i in range(20):
-            rec = play_and_record_headphones(attenuated, equalize=False)
-            # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
-            temp_recs.append(rec.data)
-        recordings.append(slab.Sound(data=np.mean(temp_recs, axis=0)))
-    recordings = slab.Sound(recordings)
-    filter_bank = slab.Filter.equalizing_filterbank(target, recordings, low_cutoff=low_cutoff,
+        rec = play_and_record_headphones(speaker='both', sound=attenuated, equalize=False)
+        recordings.append(rec.data)
+    recording = slab.Binaural(data=np.mean(recordings, axis=0))
+
+    filter_bank = slab.Filter.equalizing_filterbank(sound, recording, low_cutoff=low_cutoff,
                                                     high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
     equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
                     for i in range(len(speakers))}
