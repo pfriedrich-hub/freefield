@@ -21,7 +21,8 @@ SENSOR = motion_sensor.Sensor()
 SPEAKERS = []  # list of all the loudspeakers in the active setup
 SETUP = ""  # the currently active setup - "dome" or "arc"
 
-def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None, sensor_tracking=False):
+def initialize(setup, default=None, device=None, zbus=True, connection="GB", camera=None, sensor_tracking=False,
+               calibration_file=None):
     """
     Initialize the device and load table (and calibration) for the selected setup. Once initialized,
     the setup runs until `halt()` is called. Initialzing device which are already running will flush them.
@@ -65,7 +66,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
         SENSOR.connect()
     SPEAKERS = read_speaker_table()  # load the table containing the information about the loudspeakers
     try:
-        load_equalization()  # load the default equalization
+        load_equalization(calibration_file)  # load the default equalization
     except FileNotFoundError:
         print("Could not load loudspeaker equalization! Use 'load_equalization' or 'equalize_speakers' \n"
               "to load an existing equalization or measure and compute a new one.")
@@ -343,7 +344,7 @@ def set_signal_headphones(signal, speaker, equalize=True, data_tags=['data_l', '
         idx = slice(1, 2)
     to_play = copy.deepcopy(signal)
     PROCESSORS.write(tag=n_samples_tag, value=signal.n_samples, processors='RP2')
-    for i, (speaker, ch_tag, data_tag) in enumerate(zip(speaker[idx], chan_tags[idx], data_tags[idx])):
+    for i, (speaker, ch_tag, data_tag) in enumerate(zip(speakers[idx], chan_tags[idx], data_tags[idx])):
         if equalize:
             logging.info('Applying calibration.')  # apply level and frequency calibration
             to_play.channel(i).data = apply_equalization(signal.channel(i), speaker).data
@@ -512,7 +513,6 @@ def get_recording_delay(distance=1.4, sample_rate=48828, play_from=None, rec_fro
         n_ad = 0
     return n_sound_traveling + n_da + n_ad
 
-
 def apply_equalization(signal, speaker, level=True, frequency=True):
     """
     Apply level correction and frequency equalization to a signal
@@ -538,7 +538,7 @@ def apply_equalization(signal, speaker, level=True, frequency=True):
         equalized_signal = speaker.filter.apply(equalized_signal)
     return equalized_signal
 
-def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
+def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=100, high_cutoff=16000, alpha=1.0, file_name=None):
     """
        Equalize the headphones in two steps. First: equalize over all
        level differences by a constant for each speaker. Second: remove spectral
@@ -559,6 +559,7 @@ def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=200, high_cutof
        """
     if not PROCESSORS.mode == "bi_play_rec":
         PROCESSORS.initialize_default(mode="bi_play_rec")
+        SETUP = 'headphones'
     sound = slab.Binaural.chirp(duration=0.1, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
     speakers = SPEAKERS
     # reference_speaker = 'left'
@@ -591,19 +592,21 @@ def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=200, high_cutof
         recordings.append(rec.data)
     recording = slab.Binaural(data=np.mean(recordings, axis=0))
 
-    filter_bank = slab.Filter.equalizing_filterbank(sound, recording, low_cutoff=low_cutoff,
+    filter_bank = slab.Filter.equalizing_filterbank(sound.channel(0), recording, low_cutoff=low_cutoff,
                                                     high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
     equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
                     for i in range(len(speakers))}
     if file_name is None:  # use the default filename and rename teh existing file
         file_name = DIR / 'data' / f'calibration_{SETUP}.pkl'
     else:
-        file_name = Path(file_name)
-    if file_name.exists():  # move the old calibration to the log folder
-        date = datetime.datetime.now().strftime("_%Y-%m-%d-%H-%M-%S")
-        file_name.rename(file_name.parent / (file_name.stem + date + file_name.suffix))
+        file_name = DIR / 'data' / f'calibration_{SETUP}_{file_name}.pkl'
+    # if file_name.exists():  # move the old calibration to the log folder
+        # date = datetime.datetime.now().strftime("_%Y-%m-%d-%H-%M-%S")
+        # file_name = file_name.parent / (file_name.stem + date + file_name.suffix)
+        # file_name.rename(file_name.parent / (file_name.stem + date + file_name.suffix))
     with open(file_name, 'wb') as f:  # save the newly recorded calibration
         pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+    logging.info(f'Saved equalization to {file_name}')
 
 def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=.3,
                       low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
