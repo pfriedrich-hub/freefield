@@ -54,7 +54,6 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     global PROCESSORS, CAMERAS, SETUP, SPEAKERS, SENSOR
     # initialize device
     SETUP = setup
-    print(SETUP)
     # if bool(device) == bool(default):
     #     raise ValueError("You have to specify a device OR a default_mode")
     if device is not None:
@@ -348,12 +347,11 @@ def set_signal_headphones(signal, speaker, equalize=True, data_tags=['data_l', '
     for i, (speaker, ch_tag, data_tag) in enumerate(zip(speakers[idx], chan_tags[idx], data_tags[idx])):
         if equalize:
             logging.info('Applying calibration.')  # apply level and frequency calibration
-            to_play.channel(i).data = apply_equalization(signal.channel(i), speaker).data
-        else:
+            to_play = apply_equalization(signal=signal.channel(i), speaker=i).data
+        elif not equalize:
             to_play = signal
         PROCESSORS.write(tag=ch_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
-        PROCESSORS.write(tag=data_tag, value=to_play.channel(i).data, processors=speaker.analog_proc)
-
+        PROCESSORS.write(tag=data_tag, value=to_play, processors=speaker.analog_proc)
 
 def set_speaker(speaker):
     """
