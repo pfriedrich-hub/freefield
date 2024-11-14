@@ -349,7 +349,7 @@ def set_signal_headphones(signal, speaker, equalize=True, data_tags=['data_l', '
             logging.info('Applying calibration.')  # apply level and frequency calibration
             to_play = apply_equalization(signal=signal.channel(i), speaker=i).data
         elif not equalize:
-            to_play = signal
+            to_play = signal.channel(i).data
         PROCESSORS.write(tag=ch_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
         PROCESSORS.write(tag=data_tag, value=to_play, processors=speaker.analog_proc)
 
