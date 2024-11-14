@@ -54,6 +54,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     global PROCESSORS, CAMERAS, SETUP, SPEAKERS, SENSOR
     # initialize device
     SETUP = setup
+    print(SETUP)
     # if bool(device) == bool(default):
     #     raise ValueError("You have to specify a device OR a default_mode")
     if device is not None:
@@ -557,6 +558,7 @@ def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=100, high_cutof
            file_name (string): Name of the file to store equalization parameters.
 
        """
+    global SETUP
     if not PROCESSORS.mode == "bi_play_rec":
         PROCESSORS.initialize_default(mode="bi_play_rec")
         SETUP = 'headphones'
@@ -607,6 +609,7 @@ def equalize_headphones(bandwidth=1/10, threshold=.3, low_cutoff=100, high_cutof
     with open(file_name, 'wb') as f:  # save the newly recorded calibration
         pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
     logging.info(f'Saved equalization to {file_name}')
+    return equalization
 
 def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=.3,
                       low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
