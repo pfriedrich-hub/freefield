@@ -58,7 +58,6 @@ class Processors(object):
             if setup == "cathedral":
                 proc_list = [['RP2', 'RP2', DIR / 'data' / 'rcx' / 'rec_buf.rcx'],
                              ['RX81', 'RX8', DIR / 'data' / 'rcx' / 'play_buf.rcx']]
-                # TODO: Decide on whether naming should include indices in cathedral setup
             else:
                 proc_list = [['RP2', 'RP2', DIR / 'data' / 'rcx' / 'rec_buf.rcx'],
                              ['RX81', 'RX8', DIR / 'data' / 'rcx' / 'play_buf.rcx'],

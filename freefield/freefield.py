@@ -9,7 +9,9 @@ import numpy as np
 import slab
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from scipy.optimize import curve_fit
 from freefield import DIR, Processors, cameras, motion_sensor
+import pandas as pd
 
 logging.basicConfig(level=logging.INFO)
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
@@ -26,7 +28,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     the setup runs until `halt()` is called. Initialzing device which are already running will flush them.
 
     Arguments:
-        setup (str): which setup to load, can be 'dome' or 'arc'
+        setup (str): which setup to load, can be 'dome', 'arc' or 'cathedral'
         default (str | None): initialize the setup using one of the default settings which are:
             'play_rec': play sounds using two RX8s and record them with a RP2
             'play_birec': same as 'play_rec' but record from two microphone channels
@@ -458,7 +460,7 @@ def apply_equalization(signal, speaker, level=True, frequency=True):
 
 
 def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, threshold=.3,
-                      low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None):
+                      low_cutoff=200, high_cutoff=16000, alpha=1.0, duration=0.1, file_name=None):
     """
     Equalize the loudspeaker array in two steps. First: equalize over all
     level differences by a constant for each speaker. Second: remove spectral
@@ -476,12 +478,14 @@ def equalize_speakers(speakers="all", reference_speaker=23, bandwidth=1 / 10, th
         high_cutoff (int | float): The upper limit of frequency equalization range in Hz.
         alpha (float): Filter regularization parameter. Values below 1.0 reduce the filter's effect, values above
             amplify it. WARNING: large filter gains may result in temporal distortions of the sound
+        duration (float): Duration of the sound used in the equalization process. Choose short duration (<= 0.1)
+            for reverberant environments (like the cathedral setup).
         file_name (string): Name of the file to store equalization parameters.
 
     """
     if not PROCESSORS.mode == "play_rec":
         PROCESSORS.initialize_default(mode="play_rec")
-    sound = slab.Sound.chirp(duration=0.1, from_frequency=low_cutoff, to_frequency=high_cutoff)
+    sound = slab.Sound.multitone_masker(duration, low_cutoff, high_cutoff, bandwidth)
     if speakers == "all":  # use the whole speaker table
         speakers = SPEAKERS
     else:
@@ -562,7 +566,6 @@ def test_equalization(speakers="all"):
         rec_level.append(play_and_record(speaker, level_equalized, equalize=False))
         rec_full.append(play_and_record(speaker, full_equalized, equalize=False))
     return slab.Sound(rec_raw), slab.Sound(rec_level), slab.Sound(rec_full)
-
 
 def spectral_range(signal, bandwidth=1 / 5, low_cutoff=50, high_cutoff=20000, thresh=3,
                    plot=True, log=True):
