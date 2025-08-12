@@ -189,8 +189,6 @@ def play(kind='zBusA', proc=None):
             range 1 - 10 and refer to software triggers for a single processor.
         proc (None, str): Processor to trigger. Only needed if a software trigger is used
         """
-    if not PROCESSORS._zbus:  # switch to soft trigger 1 if DSPs are not connected via zbus
-        kind = 1
     PROCESSORS.trigger(kind=kind, proc=proc)
 
 def halt():

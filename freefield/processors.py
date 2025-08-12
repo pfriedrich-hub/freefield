@@ -129,6 +129,9 @@ class Processors(object):
                 proc.Halt()
 
     def trigger(self, kind='zBusA', proc=None):
+        if isinstance(kind, str) and not self._zbus:
+            logging.warning('zBus trigger not available. Default to soft trigger 1')
+            kind = 1
         if isinstance(kind, int):
             if not proc:
                 raise ValueError('Proc needs to be specified for SoftTrig!')
