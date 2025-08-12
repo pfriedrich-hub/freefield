@@ -426,8 +426,8 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
             rec.level = sound.level
     return rec
 
-def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
-                    recording_samplerate=48828):
+def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=1.4, compensate_attenuation=False,
+                               equalize=True, recording_samplerate=48828):
     """
     Play the signal from a speaker and return the recording. Delay compensation
     means making the buffer of the recording processor n samples longer and then
@@ -449,7 +449,7 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate
     if PROCESSORS.mode != "bi_play_rec":  # read data for left and right ear from buffer
         raise ValueError("Setup must be initialized in mode 'bi_play_rec'.")
     if compensate_delay:
-        n_delay = get_recording_delay(play_from="RP2", rec_from="RP2", sample_rate=recording_samplerate)
+        n_delay = get_recording_delay(distance, recording_samplerate, "RP2", "RP2")
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
