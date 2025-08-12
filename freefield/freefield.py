@@ -426,7 +426,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
             rec.level = sound.level
     return rec
 
-def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=1.4, compensate_attenuation=False,
+def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0, compensate_attenuation=False,
                                equalize=True, recording_samplerate=48828):
     """
     Play the signal from a speaker and return the recording. Delay compensation
