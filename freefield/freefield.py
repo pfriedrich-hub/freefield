@@ -11,7 +11,6 @@ import slab
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from freefield import DIR, Processors, cameras, motion_sensor
-from freefield.tests.test_RX8_channels import proc_list
 
 logging.basicConfig(level=logging.INFO)
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
