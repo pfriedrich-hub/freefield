@@ -375,7 +375,7 @@ def set_speaker(speaker):
 #     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
 def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
-                    recording_samplerate=48828, play_from='RX8', rec_from='RP2'):
+                    recording_samplerate=48828, play_from='RX8', rec_from='RP2', distance=1.4):
     """
     Play the signal from a speaker and return the recording. Delay compensation
     means making the buffer of the recording processor n samples longer and then
@@ -398,7 +398,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     elif play_from == 'RP2':
         write(tag="playbuflen", value=sound.n_samples, processors=["RP2"])
     if compensate_delay:
-        n_delay = get_recording_delay(play_from, rec_from)
+        n_delay = get_recording_delay(distance, recording_samplerate, play_from, rec_from)
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
