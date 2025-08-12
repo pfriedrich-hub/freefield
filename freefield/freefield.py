@@ -439,6 +439,7 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0
         speaker (string): A string specifying the headphone speakers to play from.
                 Can be 'left', 'right', or 'both'.
         sound: instance of slab.Sound, signal that is played from the speaker
+        distance: distance between sound sources and microphone (symmetric)
         compensate_delay: bool, compensate the delay between play and record
         compensate_attenuation:
         equalize:
