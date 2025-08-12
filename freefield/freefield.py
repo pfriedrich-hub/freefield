@@ -310,13 +310,13 @@ def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan
         to_play = apply_equalization(signal, speaker)
     else:
         to_play = signal
-    PROCESSORS.write(tag=n_samples_tag, value=to_play.n_samples, processors=speaker.analog_proc)
+    PROCESSORS.write(tag=n_samples_tag, value=to_play.n_samples, processors=['RX81', 'RX82'])
     PROCESSORS.write(tag=chan_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
     PROCESSORS.write(tag=data_tag, value=to_play.data, processors=speaker.analog_proc)
-    proc_list = set([s.analog_proc for s in SPEAKERS])
-    if len(proc_list) > 1:  # for the standard case: speakers are connected to two RX8 DSPs
-        proc_list.remove(speaker.analog_proc)  # set the analog output of other processors to nonexistent number 99
-        PROCESSORS.write(tag=chan_tag, value=99, processors=proc_list)
+    other_procs = set([s.analog_proc for s in SPEAKERS])
+    other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
+    PROCESSORS.write(tag=chan_tag, value=99, processors=other_procs)
+
 
 def set_signal_headphones(signal, speaker, equalize=True, data_tags=['data_l', 'data_r'], chan_tags=['chan_l', 'chan_r'],
                           n_samples_tag='playbuflen'):
@@ -374,7 +374,7 @@ def set_speaker(speaker):
 #     PROCESSORS.write(tag='chan', value=99, processors=other_procs)
 
 def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
-                    recording_samplerate=48828, play_from='RX8', rec_from='RP2', distance=1.4):
+                    recording_samplerate=48828):
     """
     Play the signal from a speaker and return the recording. Delay compensation
     means making the buffer of the recording processor n samples longer and then
@@ -392,12 +392,9 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     Returns:
         rec: 1-D array, recorded signal
     """
-    if play_from == 'RX8':
-        write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
-    elif play_from == 'RP2':
-        write(tag="playbuflen", value=sound.n_samples, processors=["RP2"])
+    write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
     if compensate_delay:
-        n_delay = get_recording_delay(distance, recording_samplerate, play_from, rec_from)
+        n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
