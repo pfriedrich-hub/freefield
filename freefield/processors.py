@@ -132,12 +132,13 @@ class Processors(object):
         if isinstance(kind, str) and not self._zbus:
             logging.warning('zBus trigger not available. Default to soft trigger 1')
             kind = 1
+            proc = list(self.processors.keys())
         if isinstance(kind, int):
             if not proc:
                 raise ValueError('Proc needs to be specified for SoftTrig!')
             if not 1 <= kind <= 10:
                 raise ValueError("software triggers must be between 1 and 10!")
-            self.processors[proc].SoftTrg(kind)
+            [self.processors[processor].SoftTrg(kind) for processor in proc]
             logging.debug(f'SoftTrig {kind} sent to {proc}.')
         elif 'zbus' in kind.lower():
             if self._zbus is None:
