@@ -11,6 +11,7 @@ import slab
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from freefield import DIR, Processors, cameras, motion_sensor
+from freefield.tests.test_RX8_channels import proc_list
 
 logging.basicConfig(level=logging.INFO)
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
@@ -188,8 +189,9 @@ def play(kind='zBusA', proc=None):
             range 1 - 10 and refer to software triggers for a single processor.
         proc (None, str): Processor to trigger. Only needed if a software trigger is used
         """
+    if not PROCESSORS._zbus:  # switch to soft trigger 1 if DSPs are not connected via zbus
+        kind = 1
     PROCESSORS.trigger(kind=kind, proc=proc)
-
 
 def halt():
     """
@@ -314,10 +316,10 @@ def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan
     PROCESSORS.write(tag=n_samples_tag, value=to_play.n_samples, processors=speaker.analog_proc)
     PROCESSORS.write(tag=chan_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
     PROCESSORS.write(tag=data_tag, value=to_play.data, processors=speaker.analog_proc)
-    other_procs = set([s.analog_proc for s in SPEAKERS])
-    other_procs.remove(speaker.analog_proc)  # set the analog output of other processors to non existent number 99
-    PROCESSORS.write(tag=chan_tag, value=99, processors=other_procs)
-
+    proc_list = set([s.analog_proc for s in SPEAKERS])
+    if len(proc_list) > 1:  # for the standard case: speakers are connected to two RX8 DSPs
+        proc_list.remove(speaker.analog_proc)  # set the analog output of other processors to nonexistent number 99
+        PROCESSORS.write(tag=chan_tag, value=99, processors=proc_list)
 
 def set_signal_headphones(signal, speaker, equalize=True, data_tags=['data_l', 'data_r'], chan_tags=['chan_l', 'chan_r'],
                           n_samples_tag='playbuflen'):
@@ -426,7 +428,6 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
         else:
             rec.level = sound.level
     return rec
-
 
 def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
                     recording_samplerate=48828):
