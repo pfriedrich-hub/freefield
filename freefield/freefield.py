@@ -457,7 +457,7 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate
     write(tag="recbuflen", value=rec_n_samples + n_delay, processors="RP2")
     set_signal_headphones(signal=sound, speaker=speaker, equalize=equalize)
     play()
-    wait_to_finish_playing()
+    wait_to_finish_playing(tag='recording')
     if speaker == 'both':
         rec = slab.Binaural([read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:],
                              read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]],
