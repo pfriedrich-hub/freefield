@@ -311,7 +311,7 @@ def set_signal_and_speaker(signal, speaker, equalize=True, data_tag='data', chan
         to_play = apply_equalization(signal, speaker)
     else:
         to_play = signal
-    PROCESSORS.write(tag=n_samples_tag, value=to_play.n_samples, processors=['RX81', 'RX82'])
+    PROCESSORS.write(tag=n_samples_tag, value=to_play.n_samples, processors=speaker.analog_proc)
     PROCESSORS.write(tag=chan_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
     PROCESSORS.write(tag=data_tag, value=to_play.data, processors=speaker.analog_proc)
     other_procs = set([s.analog_proc for s in SPEAKERS])
