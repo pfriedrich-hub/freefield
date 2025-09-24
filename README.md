@@ -22,7 +22,7 @@ You will need Python version 3.8 since this is required by tensorflow which is n
 If you are new to Python, take a look  at the installation guide for the [Anaconda](https://docs.anaconda.com/anaconda/install/ "Install Anaconda") distribution.
 
 Once you installed Anaconda, create a new environment with the correct Python version (name it "freefield" for example): \
-`conda create --name freefield python=3.8` \
+`conda create --name freefield python=3.12` \
 Activate the environment and install pip, which is necessary to install other Python packages: \
 `conda activate freefield` \
 `conda install pip` \
