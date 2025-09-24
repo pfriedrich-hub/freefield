@@ -27,9 +27,8 @@ Activate the environment and install pip, which is necessary to install other Py
 `conda activate freefield` \
 `conda install pip` \
 Now install the remaining python packages: \
-`pip install opencv-contrib-python numpy setuptools pandas matplotlib pillow scipy metawear`
-Finally, you have to obtain the freefield package as well as another one from github:
-`pip install git+https://github.com/pfriedrich-hub/slab.git`
+`pip install opencv-contrib-python numpy setuptools pandas matplotlib pillow scipy slab metawear`
+Finally, you have to obtain the freefield package as from github:
 `pip install git+https://github.com/pfriedrich-hub/freefield.git`
 
 ## Hardware drivers ##
