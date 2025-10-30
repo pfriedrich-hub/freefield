@@ -5,15 +5,21 @@ import numpy
 from matplotlib import pyplot as plt
 from scipy import stats
 import PIL
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = False
 try:
     import PySpin
 except ModuleNotFoundError:
     PySpin = False
-# try:
-#     import headpose
-# except ModuleNotFoundError:
-headpose = False
+try:
+    import headpose
+except ModuleNotFoundError:
+    headpose = False
+if not cv2 or PySpin and not headpose:
+    logging.warning('Could not import camera modules - working with cameras is disabled')
+
 
 def initialize(kind="flir"):
     """
