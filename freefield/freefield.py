@@ -447,7 +447,7 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0
     if PROCESSORS.mode != "bi_play_rec":  # read data for left and right ear from buffer
         raise ValueError("Setup must be initialized in mode 'bi_play_rec'.")
     if compensate_delay:
-        n_delay = get_recording_delay(distance, recording_samplerate, "RP2", "RP2")
+        n_delay = get_recording_delay(play_from="RP2", rec_from="RP2")
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
