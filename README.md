@@ -22,14 +22,13 @@ You will need Python version 3.8 since this is required by tensorflow which is n
 If you are new to Python, take a look  at the installation guide for the [Anaconda](https://docs.anaconda.com/anaconda/install/ "Install Anaconda") distribution.
 
 Once you installed Anaconda, create a new environment with the correct Python version (name it "freefield" for example): \
-`conda create --name freefield python=3.8` \
+`conda create --name freefield python=3.12` \
 Activate the environment and install pip, which is necessary to install other Python packages: \
 `conda activate freefield` \
 `conda install pip` \
 Now install the remaining python packages: \
-`pip install opencv-contrib-python numpy setuptools pandas matplotlib pillow scipy metawear`
-Finally, you have to obtain the freefield package as well as another one from github:
-`pip install git+https://github.com/pfriedrich-hub/slab.git`
+`pip install opencv-contrib-python numpy setuptools pandas matplotlib pillow h5py h5netcdf scipy slab metawear`
+Finally, you have to obtain the freefield package as from github:
 `pip install git+https://github.com/pfriedrich-hub/freefield.git`
 
 ## Hardware drivers ##

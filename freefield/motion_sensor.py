@@ -3,10 +3,8 @@ import time
 import numpy
 import logging
 try:
-    import mbientlab.warble
-    import mbientlab.metawear
-    # from mbientlab.warble import *
-    # from mbientlab.metawear import *
+    from mbientlab.warble import *
+    from mbientlab.metawear import *
 except  ModuleNotFoundError:
     mbientlab = None
     logging.warning('Could not import mbientlab - working with motion sensor is disabled')
@@ -87,7 +85,7 @@ class Sensor():
         # setup ble
         libmetawear.mbl_mw_settings_set_connection_parameters(sensor.device.board, 7.5, 7.5, 0, 6000)
         # setup quaternionA
-        libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.NDOF)
+        # libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.NDOF)
         libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.IMU_PLUS)
         libmetawear.mbl_mw_sensor_fusion_set_acc_range(sensor.device.board, SensorFusionAccRange._8G)
         libmetawear.mbl_mw_sensor_fusion_set_gyro_range(sensor.device.board, SensorFusionGyroRange._2000DPS)
@@ -101,14 +99,14 @@ class Sensor():
         self.device = sensor
         logging.info('Motion sensor connected and running')
 
-    def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False):
+    def get_pose(self, n_datapoints=30, calibrate=True, print_pose=False, convention='psychoacoustics'):
         """
         Read orientation in polar angle from the motion sensor.
         Args:
             n_datapoints (int): Number of data points from which an average orientation is calculated.
             calibrate (boolean): Whether to subtract an offset from the orientation.
             print_pose (boolean): If true, continuously print out orientation.
-
+            convention (str): Convention of the spherical coordinate system. Can be 'physics' or 'psychoacoustics'.
         Returns:
             pose (numpy.ndarray): Sensor orientation in polar angles.
         """
@@ -118,8 +116,12 @@ class Sensor():
             pose = numpy.array((self.device.pose.yaw, self.device.pose.roll))
             if not any(numpy.isnan(pose)) and all(-180 <= _pose <= 360 for _pose in pose)\
                     and not any(-1e-3 <= _pose <= 1e-3 for _pose in pose):
-                if pose[0] > 180:  # todo fix this
-                    pose[0] -= 360
+                if convention == 'psychoacoustics':
+                    if pose[0] > 180:
+                        pose[0] -= 360
+                elif convention == 'physics':
+                        pose[0] = 360 - pose[0]
+                else: raise ValueError('Convention must be "psychoacoustics" or "physics"!')
                 pose_log[n] = pose
                 n += 1
             if not self.device.device.is_connected:
@@ -164,6 +166,19 @@ class Sensor():
             self.device = None
             logging.info('Motion sensor disconnected')
 
-
+    def set_fusion_mode(self, fusion_mode):
+        """
+        Change the fusion mode of the sensor.
+        Arguments:
+            fusion_mode (str): Fusion mode of the sensor.
+            NDoF: Calculates absolute orientation from accelerometer, gyro, and magnetometer
+            IMUPlus: Calculates relative orientation in space from accelerometer and gyro data
+            Compass: Determines geographic direction from th Earth’s magnetic field
+            M4G: Similar to IMUPlus except rotation is detected with the magnetometer
+        """
+        mode = getattr(SensorFusionMode, fusion_mode.upper())
+        libmetawear.mbl_mw_sensor_fusion_set_mode(self.device.device.board, mode)
+        libmetawear.mbl_mw_sensor_fusion_write_config(self.device.device.board)
+        logging.info(f'Sensor fusion mode set to {fusion_mode}')
 
 

@@ -68,7 +68,7 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
     try:
         load_equalization(calibration_file)  # load the default equalization
     except FileNotFoundError:
-        print("Could not load loudspeaker equalization! Use 'load_equalization' or 'equalize_speakers' \n"
+        logging.warning("Could not load loudspeaker equalization! Use 'load_equalization' or 'equalize_speakers' \n"
               "to load an existing equalization or measure and compute a new one.")
 
 
@@ -189,7 +189,6 @@ def play(kind='zBusA', proc=None):
         proc (None, str): Processor to trigger. Only needed if a software trigger is used
         """
     PROCESSORS.trigger(kind=kind, proc=proc)
-
 
 def halt():
     """
@@ -349,7 +348,7 @@ def set_signal_headphones(signal, speaker, equalize=True, data_tags=['data_l', '
             logging.info('Applying calibration.')  # apply level and frequency calibration
             to_play = apply_equalization(signal=signal.channel(i), speaker=i).data
         elif not equalize:
-            to_play = signal
+            to_play = signal.channel(i).data
         PROCESSORS.write(tag=ch_tag, value=speaker.analog_channel, processors=speaker.analog_proc)
         PROCESSORS.write(tag=data_tag, value=to_play, processors=speaker.analog_proc)
 
@@ -396,7 +395,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
     if compensate_delay:
         n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
-        n_delay += 100  # make the delay a bit larger to avoid missing the sound's onset
+        n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
     rec_n_samples = int(sound.duration * recording_samplerate)
@@ -424,9 +423,8 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
             rec.level = sound.level
     return rec
 
-
-def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate_attenuation=False, equalize=True,
-                    recording_samplerate=48828):
+def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0, compensate_attenuation=False,
+                               equalize=True, recording_samplerate=48828):
     """
     Play the signal from a speaker and return the recording. Delay compensation
     means making the buffer of the recording processor n samples longer and then
@@ -438,6 +436,7 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate
         speaker (string): A string specifying the headphone speakers to play from.
                 Can be 'left', 'right', or 'both'.
         sound: instance of slab.Sound, signal that is played from the speaker
+        distance: distance between sound sources and microphone (symmetric)
         compensate_delay: bool, compensate the delay between play and record
         compensate_attenuation:
         equalize:
@@ -456,7 +455,7 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, compensate
     write(tag="recbuflen", value=rec_n_samples + n_delay, processors="RP2")
     set_signal_headphones(signal=sound, speaker=speaker, equalize=equalize)
     play()
-    wait_to_finish_playing()
+    wait_to_finish_playing(tag='recording')
     if speaker == 'both':
         rec = slab.Binaural([read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:],
                              read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]],
@@ -760,12 +759,14 @@ def spectral_range(signal, bandwidth=1 / 5, low_cutoff=50, high_cutoff=20000, th
     return difference
 
 
-def get_head_pose(method='sensor'):
+def get_head_pose(method='sensor', convention='psychoacoustics'):
     """
     Wrapper for the get headpose methods of the camera and sensor classes
 
     Args:
         method (string): Method use for headpose estimation. Can be "camera" or "sensor"
+        convention (string): Convention of the spherical coordinate system. Can be 'physics' or 'psychoacoustics'.
+
     Returns:
         head_pose (numpy.ndarray): Array containing spheric coordinates of
         the current head orientation: (Azimuth, Elevation)
@@ -780,7 +781,7 @@ def get_head_pose(method='sensor'):
         if not SENSOR.device:
             raise ValueError("No sensor connected!")
         else:
-            head_pose = SENSOR.get_pose()
+            head_pose = SENSOR.get_pose(convention=convention)
     else:
         raise ValueError("Method must be 'camera' or 'sensor'")
     return head_pose
