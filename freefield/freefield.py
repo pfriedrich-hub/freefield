@@ -394,7 +394,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     """
     write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
     if compensate_delay:
-        n_delay = get_recording_delay(play_from="RX8", rec_from="RP2", sample_rate=recording_samplerate)
+        n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
         n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
     else:
         n_delay = 0
