@@ -393,14 +393,14 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
         rec: 1-D array, recorded signal
     """
     write(tag="playbuflen", value=sound.n_samples, processors=["RX81", "RX82"])
+    set_signal_and_speaker(sound, speaker, equalize)
     if compensate_delay:
         n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
-        n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
+        n_delay += int(.0014 * recording_samplerate)  # empirically tested
     else:
         n_delay = 0
     rec_n_samples = int(sound.duration * recording_samplerate)
     write(tag="playbuflen", value=rec_n_samples + n_delay, processors="RP2")
-    set_signal_and_speaker(sound, speaker, equalize)
     play()
     wait_to_finish_playing()
     if PROCESSORS.mode == "play_rec":  # read the data from buffer and skip the first n_delay samples
@@ -447,8 +447,8 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0
     if PROCESSORS.mode != "bi_play_rec":  # read data for left and right ear from buffer
         raise ValueError("Setup must be initialized in mode 'bi_play_rec'.")
     if compensate_delay:
-        n_delay = get_recording_delay(distance=distance, play_from="RP2", rec_from="RP2")
-        n_delay += 50  # make the delay a bit larger to avoid missing the sound's onset
+        n_delay = get_recording_delay(play_from="RP2", rec_from="RP2")
+        n_delay += int(.0014 * recording_samplerate)  # empirically tested
     else:
         n_delay = 0
     rec_n_samples = int(sound.duration * recording_samplerate)
@@ -461,9 +461,11 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0
                              read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:]],
                             samplerate=recording_samplerate)
     elif speaker == 'left':
-        rec = slab.Sound(read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:])
+        rec = slab.Sound(read(tag='datal', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:],
+                         samplerate=recording_samplerate)
     elif speaker == 'right':
-        rec = slab.Sound(read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:])
+        rec = slab.Sound(read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:],
+                         samplerate=recording_samplerate)
     if sound.samplerate != recording_samplerate:
         rec = rec.resample(sound.samplerate)
     if compensate_attenuation:
