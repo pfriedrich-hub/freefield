@@ -396,7 +396,7 @@ def play_and_record(speaker, sound, compensate_delay=True, compensate_attenuatio
     set_signal_and_speaker(sound, speaker, equalize)
     if compensate_delay:
         n_delay = get_recording_delay(play_from="RX8", rec_from="RP2")
-        n_delay += int(.0014 * recording_samplerate)  # empirically tested
+        n_delay += int(.00325 * recording_samplerate)  # empirically tested for 100kHz
     else:
         n_delay = 0
     rec_n_samples = int(sound.duration * recording_samplerate)
