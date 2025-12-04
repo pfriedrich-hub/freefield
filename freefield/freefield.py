@@ -444,6 +444,9 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0
     Returns:
         rec: 2-D array, recorded signal
     """
+    fs_out = sound.samplerate  # original samplerate of input signal
+    if sound.samplerate != recording_samplerate:
+        sound = sound.resample(recording_samplerate)
     if PROCESSORS.mode != "bi_play_rec":  # read data for left and right ear from buffer
         raise ValueError("Setup must be initialized in mode 'bi_play_rec'.")
     if compensate_delay:
@@ -467,7 +470,7 @@ def play_and_record_headphones(speaker, sound, compensate_delay=True, distance=0
         rec = slab.Sound(read(tag='datar', processor='RP2', n_samples=rec_n_samples + n_delay)[n_delay:],
                          samplerate=recording_samplerate)
     if sound.samplerate != recording_samplerate:
-        rec = rec.resample(sound.samplerate)
+        rec = rec.resample(fs_out)
     if compensate_attenuation:
         if isinstance(rec, slab.Binaural):
             iid = rec.left.level - rec.right.level

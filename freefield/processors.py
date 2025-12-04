@@ -63,7 +63,9 @@ class Processors(object):
                          ['RX81', 'RX8', DIR/'data'/'rcx'/'play_buf.rcx'],
                          ['RX82', 'RX8', DIR/'data'/'rcx'/'play_buf.rcx']]
         elif mode.lower() == "bi_play_rec":
-            proc_list = [['RP2', 'RP2',  DIR/'data'/'rcx'/'bi_play_rec_buf.rcx']]
+            proc_list = [['RP2', 'RP2',  DIR/'data'/'rcx'/'bi_play_rec_buf.rcx'],
+                         ['RX81', 'RX8', DIR / 'data' / 'rcx' / 'bits.rcx'],
+                         ['RX82', 'RX8', DIR / 'data' / 'rcx' / 'bits.rcx']]
         elif mode.lower() == "loctest_freefield":
             proc_list = [['RP2', 'RP2',  DIR/'data'/'rcx'/'button.rcx'],
                          ['RX81', 'RX8', DIR/'data'/'rcx'/'play_buf.rcx'],
