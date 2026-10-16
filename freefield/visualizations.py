@@ -1,7 +1,7 @@
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 import numpy as np
-from freefield import freefield
+import freefield
 
 
 def plot_sources(azimuth, elevation, distance=1.6):

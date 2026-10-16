@@ -5,7 +5,7 @@ import logging
 try:
     from mbientlab.warble import *
     from mbientlab.metawear import *
-except  ModuleNotFoundError:
+except ModuleNotFoundError:
     mbientlab = None
     logging.warning('Could not import mbientlab - working with motion sensor is disabled')
 
