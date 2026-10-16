@@ -99,6 +99,8 @@ def initialize(setup, default=None, device=None, zbus=True, connection="GB", cam
         CAMERAS = cameras.initialize('flir')
     if sensor_tracking:
         from freefield import motion_sensor
+        if SENSOR is not None:  # e.g. re-initializing in the same console: free the old BLE connection first
+            SENSOR.halt()
         SENSOR = motion_sensor.Sensor()
         SENSOR.connect()
     SPEAKERS = read_speaker_table()  # load the table containing the information about the loudspeakers
@@ -908,56 +910,52 @@ def get_head_response(method='sensor', proc="RP2", tag="response"):
     response = 0
     while not response:
         pose = get_head_pose(method)
-        if all(pose):
+        if pose is not None and all(pose):
             print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
         else:
             print('no head pose detected', end="\r", flush=True)
         response = read(tag, proc)
-    if all(pose):
+    if pose is not None and all(pose):
         print('Response| azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
     return pose
 
-def calibrate_sensor(led_feedback=True, button_control='processor'):
+def calibrate_sensor(led_feedback=True, button_control='processor', **kwargs):
     """
     Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
-    towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
-    The average is then used as an offset for pose estimation.
+    towards the center speaker. After a button is pressed, the offset is set to the median head orientation over a
+    short window once the head is still (see `motion_sensor.Sensor.calibrate`). Call this before every localization
+    response.
         Args:
         led_feedback: whether to turn on the central led to assist gaze control during calibration
-        button_control (str): whether to initialize calibration by button response; may be 'processor' if a button is
-         connected to the RP2 or 'keyboard', if usb keyboard input is to be used.
+        button_control (str | None): whether to initialize calibration by button response; may be 'processor' if a
+         button is connected to the RP2, 'keyboard', if usb keyboard input is to be used, or None to calibrate
+         immediately (e.g. if the experiment script handles the prompt itself).
+        **kwargs: passed on to `Sensor.calibrate` (window_s, stable_mad, timeout_s, check_n, check_tol, max_attempts)
     Returns:
-        bool: True if difference between pose and fix is smaller than var, False otherwise
+        dict: details of the calibration (raw offset, spread, stability, residual), see `Sensor.calibrate`.
+        The raw offsets of all calibrations are collected in `freefield.SENSOR.calibration_log`.
     """
 
     if SENSOR is None:
         raise RuntimeError("SENSOR is not initialized. Call freefield.initialize() first.")
-    log_size = 100
-    limit = 0.2
     if led_feedback:
         [led_speaker] = pick_speakers(23)  # get object for center speaker LED
         write(tag='bitmask', value=led_speaker.digital_channel,
               processors=led_speaker.digital_proc)  # illuminate LED
-    if button_control == 'processor':
-        logging.debug('rest at center speaker and press button to start calibration...')
-        wait_for_button()  # start calibration after button press
-    elif button_control == 'keyboard':
-        input('Rest at center speaker and press button to start calibration...')
-    logging.debug('calibrating')
-    log = np.zeros(2)
-    while True:  # wait in loop for sensor to stabilize
-        pose = SENSOR.get_pose(calibrate=False)
-        log = np.vstack((log, pose))
-        # check if orientation is stable for at least 30 data points
-        if len(log) > log_size:
-            diff = np.mean(np.abs(np.diff(log[-log_size:], axis=0)), axis=0).astype('float16')
-            logging.debug('az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
-            if diff[0] < limit and diff[1] < limit:  # limit in degree
-                break
-    if led_feedback:
-        write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
-    SENSOR.pose_offset = np.around(np.mean(log[-int(log_size / 2):].astype('float16'), axis=0), decimals=2)
-    logging.debug('Sensor calibration complete.')
+    try:
+        if button_control == 'processor':
+            logging.debug('rest at center speaker and press button to start calibration...')
+            wait_for_button()  # start calibration after button press
+        elif button_control == 'keyboard':
+            input('Rest at center speaker and press button to start calibration...')
+        elif button_control is not None:
+            raise ValueError("button_control must be 'processor', 'keyboard' or None")
+        logging.debug('calibrating')
+        info = SENSOR.calibrate(**kwargs)
+    finally:
+        if led_feedback:
+            write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    return info
 
 
 def calibrate_camera(speakers, n_reps=1, n_images=5, show=True):

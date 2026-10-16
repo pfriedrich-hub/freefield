@@ -35,33 +35,43 @@ freefield.write(
 
 freefield.play_start_sound()
 
-for speaker_index in sequence:
+# Always release the hardware -- otherwise an interrupted run (Ctrl+C) keeps the
+# Bluetooth connection to the sensor open and the next initialize() cannot find it.
+try:
+    for speaker_index in sequence:
 
-    # The participant presses the button when the head is returned to center position
-    freefield.wait_for_button(
-        proc="RP2",
-        tag="response",
-    )
+        # The participant returns the head to the center speaker (its LED lights up)
+        # and presses the button. The sensor is then zeroed to the current head pose,
+        # so the response below is relative to (0, 0).
+        freefield.calibrate_sensor(
+            led_feedback=True,
+            button_control="processor",
+        )
 
-    speaker = freefield.pick_speakers(speaker_index)[0]
+        speaker = freefield.pick_speakers(speaker_index)[0]
 
-    # Present the stimulus from the target loudspeaker.
-    freefield.set_signal_and_speaker(
-        signal=stimulus.data.flatten(),
-        speaker=speaker,
-    )
-    freefield.play()
+        # Present the stimulus from the target loudspeaker.
+        freefield.set_signal_and_speaker(
+            signal=stimulus.data.flatten(),
+            speaker=speaker,
+        )
+        freefield.play()
 
-    # The participant turns their head towards the perceived sound location
-    # and presses the response button.
-    freefield.wait_for_button(
-        proc="RP2",
-        tag="response",
-    )
+        # The participant turns their head towards the perceived sound location
+        # and presses the response button.
+        freefield.wait_for_button(
+            proc="RP2",
+            tag="response",
+        )
 
-    response = freefield.get_head_pose(
-        method="sensor",
-        convention="psychoacoustics",
-    )
+        response = freefield.get_head_pose(
+            method="sensor",
+            convention="psychoacoustics",
+        )
 
-    sequence.add_response(response)
+        sequence.add_response(response)
+finally:
+    # Raw head pose at every calibration, one row per trial ([azimuth, elevation]).
+    # A step change between trials marks a moved sensor / refitted headband.
+    calibration_poses = list(freefield.SENSOR.calibration_log)
+    freefield.halt()

@@ -12,41 +12,56 @@ import freefield.motion_sensor as motion_sensor
 # Helpers
 # ---------------------------------------------------------------------------
 
-class PoseSequenceState:
+class PacketStream:
     """
-    Fake State object returning a sequence of sensor poses.
+    Fake State object delivering a sequence of sensor packets in time.
 
-    motion_sensor.get_pose accesses self.device.pose twice per iteration:
-        self.device.pose.yaw
-        self.device.pose.roll
+    Packet i arrives at i * dt on a fake clock, like the BLE callback would:
+    `samples` counts the packets that have arrived, `pose` is the latest one.
+    Once the list is exhausted the last packet stays cached and `samples`
+    stops changing, i.e. the sensor goes silent.
 
-    Therefore each pose is returned for two consecutive property accesses.
+    `clock` replaces motion_sensor.time: it only advances on sleep(), so
+    time-outs and calibration windows run deterministically without real
+    waiting.
     """
 
-    def __init__(self, poses, connected=True):
-        self._poses = poses
-        self._pose_accesses = 0
-
+    def __init__(self, poses, connected=True, dt=0.01):
+        self._poses = list(poses)
+        self._dt = dt
+        self._t = 0.0
         self.device = SimpleNamespace(
             is_connected=connected,
             board=object(),
         )
+        self.clock = SimpleNamespace(time=self._time, sleep=self._sleep)
+
+    def _time(self):
+        return self._t
+
+    def _sleep(self, seconds):
+        self._t += seconds
+
+    def skip_to(self, index):
+        """Jump the clock to the arrival of packet `index`."""
+        self._t = max(self._t, index * self._dt)
+
+    @property
+    def samples(self):
+        return min(int(self._t / self._dt + 1e-9), len(self._poses) - 1)
 
     @property
     def pose(self):
-        index = min(
-            self._pose_accesses // 2,
-            len(self._poses) - 1,
-        )
+        yaw, roll = self._poses[self.samples]
+        return SimpleNamespace(yaw=yaw, roll=roll)
 
-        yaw, roll = self._poses[index]
 
-        self._pose_accesses += 1
-
-        return SimpleNamespace(
-            yaw=yaw,
-            roll=roll,
-        )
+def _sensor_with_stream(monkeypatch, poses, connected=True):
+    stream = PacketStream(poses, connected=connected)
+    monkeypatch.setattr(motion_sensor, "time", stream.clock)
+    sensor = motion_sensor.Sensor()
+    sensor.device = stream
+    return sensor
 
 
 def _patch_connect_dependencies(monkeypatch, discovered_devices):
@@ -97,7 +112,7 @@ def _patch_connect_dependencies(monkeypatch, discovered_devices):
         time=MagicMock(
             side_effect=[
                 0.0,
-                2.1,
+                5.1,
             ]
         ),
         sleep=MagicMock(),
@@ -228,6 +243,13 @@ def _patch_connect_dependencies(monkeypatch, discovered_devices):
             EULER_ANGLE="EULER_ANGLE",
         ),
         raising=False,
+    )
+
+    # Do not leave a real at-exit halt() behind for the fake device.
+    monkeypatch.setattr(
+        motion_sensor,
+        "atexit",
+        SimpleNamespace(register=MagicMock(), unregister=MagicMock()),
     )
 
     return SimpleNamespace(
@@ -414,7 +436,7 @@ def test_connect_finds_sensor_connects_and_configures_device(monkeypatch):
 
     dependencies.libmetawear.mbl_mw_sensor_fusion_set_mode.assert_called_once_with(
         dependencies.board,
-        "IMU_PLUS",
+        "NDOF",
     )
 
     dependencies.libmetawear.mbl_mw_sensor_fusion_set_acc_range.assert_called_once_with(
@@ -468,7 +490,7 @@ def test_connect_returns_none_if_no_sensor_is_found(monkeypatch):
         time=MagicMock(
             side_effect=[
                 0.0,
-                2.1,
+                5.1,
             ]
         ),
         sleep=MagicMock(),
@@ -495,9 +517,8 @@ def test_connect_returns_none_if_no_sensor_is_found(monkeypatch):
     scanner.set_handler.assert_called_once()
     scanner.start.assert_called_once()
 
-    # Because the method returns before the stop() call,
-    # stop() should not have been called.
-    scanner.stop.assert_not_called()
+    # The scan is stopped before giving up.
+    scanner.stop.assert_called_once()
 
 
 def test_connect_selects_requested_sensor_if_multiple_are_found(monkeypatch):
@@ -533,10 +554,9 @@ def test_connect_selects_requested_sensor_if_multiple_are_found(monkeypatch):
 # Sensor.get_pose
 # ---------------------------------------------------------------------------
 
-def test_get_pose_returns_mean_of_valid_measurements():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_returns_mean_of_valid_measurements(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (10, 20),
             (12, 22),
@@ -560,10 +580,9 @@ def test_get_pose_returns_mean_of_valid_measurements():
     )
 
 
-def test_get_pose_converts_psychoacoustic_azimuth():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_converts_psychoacoustic_azimuth(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 270,
@@ -589,10 +608,9 @@ def test_get_pose_converts_psychoacoustic_azimuth():
     )
 
 
-def test_get_pose_converts_physics_azimuth():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_converts_physics_azimuth(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 90,
@@ -618,10 +636,9 @@ def test_get_pose_converts_physics_azimuth():
     )
 
 
-def test_get_pose_rejects_invalid_convention():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_rejects_invalid_convention(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 30,
@@ -641,10 +658,9 @@ def test_get_pose_rejects_invalid_convention():
         )
 
 
-def test_get_pose_ignores_nan_and_zero_measurements():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_ignores_nan_and_zero_measurements(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 numpy.nan,
@@ -677,10 +693,9 @@ def test_get_pose_ignores_nan_and_zero_measurements():
     )
 
 
-def test_get_pose_applies_calibration_offset():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_applies_calibration_offset(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 30,
@@ -712,10 +727,9 @@ def test_get_pose_applies_calibration_offset():
     )
 
 
-def test_get_pose_does_not_apply_offset_when_calibration_disabled():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_does_not_apply_offset_when_calibration_disabled(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 30,
@@ -747,10 +761,9 @@ def test_get_pose_does_not_apply_offset_when_calibration_disabled():
     )
 
 
-def test_get_pose_warns_if_device_is_not_calibrated(caplog):
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_warns_if_device_is_not_calibrated(caplog, monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 30,
@@ -781,9 +794,8 @@ def test_get_pose_warns_if_device_is_not_calibrated(caplog):
 
 
 def test_get_pose_reconnects_if_connection_is_lost(monkeypatch):
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 30,
@@ -813,9 +825,8 @@ def test_get_pose_reconnects_if_connection_is_lost(monkeypatch):
 
 
 def test_get_pose_does_not_reconnect_if_user_declines(monkeypatch):
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (
                 30,
@@ -856,6 +867,7 @@ def test_halt_stops_unsubscribes_and_disconnects(monkeypatch):
 
     hardware_device = SimpleNamespace(
         board=board,
+        is_connected=True,
         disconnect=MagicMock(),
     )
 
@@ -1032,17 +1044,16 @@ def test_set_fusion_mode_raises_for_unknown_mode(monkeypatch):
     libmetawear.mbl_mw_sensor_fusion_set_mode.assert_not_called()
     libmetawear.mbl_mw_sensor_fusion_write_config.assert_not_called()
 
-def test_get_pose_filters_outliers():
-    sensor = motion_sensor.Sensor()
-
-    sensor.device = PoseSequenceState(
+def test_get_pose_filters_outliers(monkeypatch):
+    sensor = _sensor_with_stream(
+        monkeypatch,
         poses=[
             (10, 20),
             (11, 21),
             (9, 19),
             (10, 20),
             (100, 120),
-        ]
+        ],
     )
 
     pose = sensor.get_pose(
@@ -1055,3 +1066,238 @@ def test_get_pose_filters_outliers():
         numpy.array([10.0, 20.0]),
         atol=1.0,
     )
+
+# ---------------------------------------------------------------------------
+# Sensor.calibrate
+# ---------------------------------------------------------------------------
+
+def _still(az, el, n, jitter=0.1, seed=0):
+    rng = numpy.random.default_rng(seed)
+    return [(az + rng.uniform(-jitter, jitter), el + rng.uniform(-jitter, jitter))
+            for _ in range(n)]
+
+
+def test_calibrate_sets_offset_to_median_of_still_window(monkeypatch):
+    poses = _still(30, 10, 100)
+    poses[3] = (200, 160)  # a single glitched packet must not become the zero
+    sensor = _sensor_with_stream(monkeypatch, poses)
+
+    info = sensor.calibrate()
+
+    assert info["stable"]
+    assert info["attempts"] == 1
+    assert info["n_samples"] >= 5
+    assert info["residual"] < 0.5
+    numpy.testing.assert_allclose(sensor.pose_offset, [30, 10], atol=0.2)
+    assert sensor.is_calibrated
+    assert sensor.last_calibration is info
+    assert len(sensor.calibration_log) == 1
+    numpy.testing.assert_allclose(sensor.calibration_log[0], [30, 10], atol=0.2)
+
+
+def test_calibrate_waits_for_head_to_settle(monkeypatch):
+    moving = [(az, 5) for az in numpy.linspace(60, 20, 40)]  # head turning back to center
+    poses = moving + _still(20, 5, 60)
+    sensor = _sensor_with_stream(monkeypatch, poses)
+
+    info = sensor.calibrate()
+
+    assert info["stable"]
+    numpy.testing.assert_allclose(sensor.pose_offset, [20, 5], atol=0.2)
+
+
+def test_calibrate_is_wrap_safe_around_180(monkeypatch):
+    # raw yaw alternates between 179.9 and 180.1 (= -179.9)
+    poses = [(179.9 if i % 2 else 180.1, 3) for i in range(100)]
+    sensor = _sensor_with_stream(monkeypatch, poses)
+
+    sensor.calibrate()
+
+    assert abs(abs(sensor.pose_offset[0]) - 180) < 0.2
+    pose = sensor.get_pose()  # single packet: within the +-0.1 deg jitter of the zero
+    numpy.testing.assert_allclose(pose, [0, 0], atol=0.25)
+
+
+def test_calibrate_does_not_block_if_head_never_settles(monkeypatch, caplog):
+    rng = numpy.random.default_rng(1)
+    poses = [(rng.uniform(-20, 20), rng.uniform(-20, 20)) for _ in range(1000)]
+    sensor = _sensor_with_stream(monkeypatch, poses)
+
+    with caplog.at_level(logging.WARNING):
+        info = sensor.calibrate(timeout_s=1.5)
+
+    assert not info["stable"]
+    assert info["attempts"] == 3
+    assert "did not settle" in caplog.text
+    assert len(sensor.calibration_log) == 1
+
+
+def test_calibrate_with_silent_sensor_uses_cached_packet(monkeypatch, caplog):
+    sensor = _sensor_with_stream(monkeypatch, [(25, 4)])  # one packet, then silence
+
+    with caplog.at_level(logging.WARNING):
+        info = sensor.calibrate()
+
+    numpy.testing.assert_allclose(sensor.pose_offset, [25, 4])
+    assert info["residual"] is None
+    assert "no new samples" in caplog.text
+
+
+def test_calibrate_appends_to_log_on_every_call(monkeypatch):
+    sensor = _sensor_with_stream(monkeypatch, _still(10, 2, 100) + _still(12, 6, 100, seed=1))
+
+    sensor.calibrate()
+    sensor.device.skip_to(100)  # skip to the second posture
+    sensor.calibrate()
+
+    assert len(sensor.calibration_log) == 2
+    numpy.testing.assert_allclose(sensor.calibration_log[1], [12, 6], atol=0.2)
+
+
+def test_calibrate_requires_connected_sensor():
+    sensor = motion_sensor.Sensor()
+
+    with pytest.raises(RuntimeError, match="not connected"):
+        sensor.calibrate()
+
+
+def test_get_pose_relative_to_calibration(monkeypatch):
+    poses = _still(30, 10, 60, jitter=0) + [(75, 25)] * 3
+    sensor = _sensor_with_stream(monkeypatch, poses)
+    sensor.calibrate()
+
+    sensor.device.skip_to(60)  # participant turned towards the sound
+    pose = sensor.get_pose()
+
+    numpy.testing.assert_allclose(pose, [45, 15], atol=1e-6)
+
+
+def test_get_pose_wraps_calibrated_azimuth(monkeypatch):
+    sensor = _sensor_with_stream(monkeypatch, [(-170, 0.5)])
+    sensor.pose_offset = numpy.array([170.0, 0.0])
+
+    pose = sensor.get_pose()
+
+    numpy.testing.assert_allclose(pose, [20, 0.5])
+
+
+def test_get_pose_physics_convention_after_calibration(monkeypatch):
+    sensor = _sensor_with_stream(monkeypatch, [(40, 5)])
+    sensor.pose_offset = numpy.array([10.0, 0.0])
+
+    pose = sensor.get_pose(convention="physics")
+
+    # 30 deg in psychoacoustic convention -> 330 deg in physics convention
+    numpy.testing.assert_allclose(pose, [330, 5])
+
+
+def test_get_pose_returns_none_without_valid_data(monkeypatch, caplog):
+    sensor = _sensor_with_stream(monkeypatch, [(numpy.nan, numpy.nan)])
+
+    with caplog.at_level(logging.WARNING):
+        pose = sensor.get_pose(calibrate=False)
+
+    assert pose is None
+    assert "Could not detect head pose" in caplog.text
+
+
+def test_connect_resets_calibration(monkeypatch):
+    _patch_connect_dependencies(
+        monkeypatch,
+        discovered_devices=[("AA:BB:CC:DD", "MetaWear")],
+    )
+    sensor = motion_sensor.Sensor()
+    sensor.pose_offset = numpy.array([1.0, 2.0])
+
+    sensor.connect()
+
+    assert sensor.pose_offset is None
+    assert not sensor.is_calibrated
+
+
+def test_connect_uses_requested_fusion_mode(monkeypatch):
+    dependencies = _patch_connect_dependencies(
+        monkeypatch,
+        discovered_devices=[("AA:BB:CC:DD", "MetaWear")],
+    )
+    sensor = motion_sensor.Sensor(fusion_mode="IMU_PLUS")
+
+    sensor.connect()
+
+    dependencies.libmetawear.mbl_mw_sensor_fusion_set_mode.assert_called_once_with(
+        dependencies.board,
+        "IMU_PLUS",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Releasing the connection
+# ---------------------------------------------------------------------------
+
+def _halt_fixture(monkeypatch, connected=True):
+    board = object()
+    hardware_device = SimpleNamespace(board=board, is_connected=connected, disconnect=MagicMock())
+    libmetawear = MagicMock()
+    monkeypatch.setattr(motion_sensor, "libmetawear", libmetawear, raising=False)
+    monkeypatch.setattr(motion_sensor, "SensorFusionData",
+                        SimpleNamespace(EULER_ANGLE="EULER_ANGLE"), raising=False)
+    monkeypatch.setattr(motion_sensor, "time", SimpleNamespace(sleep=MagicMock()))
+    sensor = motion_sensor.Sensor()
+    sensor.device = SimpleNamespace(device=hardware_device)
+    return sensor, hardware_device, libmetawear
+
+
+def test_halt_releases_device_even_if_a_step_fails(monkeypatch):
+    sensor, hardware_device, libmetawear = _halt_fixture(monkeypatch)
+    libmetawear.mbl_mw_sensor_fusion_stop.side_effect = RuntimeError("board not responding")
+
+    sensor.halt()
+
+    assert sensor.device is None
+    libmetawear.mbl_mw_debug_disconnect.assert_called_once()
+    hardware_device.disconnect.assert_called_once_with()
+
+
+def test_halt_after_lost_connection_only_releases_host_side(monkeypatch):
+    sensor, hardware_device, libmetawear = _halt_fixture(monkeypatch, connected=False)
+
+    sensor.halt()
+
+    assert sensor.device is None
+    assert libmetawear.mock_calls == []
+    hardware_device.disconnect.assert_called_once_with()
+
+
+def test_halt_is_idempotent(monkeypatch):
+    sensor, hardware_device, libmetawear = _halt_fixture(monkeypatch)
+
+    sensor.halt()
+    sensor.halt()
+
+    hardware_device.disconnect.assert_called_once_with()
+
+
+def test_connect_registers_halt_at_exit_and_halt_unregisters(monkeypatch):
+    _patch_connect_dependencies(monkeypatch, discovered_devices=[("AA:BB:CC:DD", "MetaWear")])
+    fake_atexit = SimpleNamespace(register=MagicMock(), unregister=MagicMock())
+    monkeypatch.setattr(motion_sensor, "atexit", fake_atexit)
+    sensor = motion_sensor.Sensor()
+
+    sensor.connect()
+    fake_atexit.register.assert_called_once_with(sensor.halt)
+
+    sensor.halt()
+    fake_atexit.unregister.assert_called_once_with(sensor.halt)
+
+
+def test_connect_releases_existing_connection_first(monkeypatch):
+    _patch_connect_dependencies(monkeypatch, discovered_devices=[("AA:BB:CC:DD", "MetaWear")])
+    sensor = motion_sensor.Sensor()
+    old_state = object()
+    sensor.device = old_state
+    halted = []
+    monkeypatch.setattr(sensor, "halt", lambda: halted.append(sensor.device) or setattr(sensor, "device", None))
+
+    sensor.connect()
+
+    assert halted == [old_state]
